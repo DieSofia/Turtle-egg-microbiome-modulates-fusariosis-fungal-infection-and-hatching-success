@@ -78,89 +78,15 @@ library(ggnetwork)
 library(limma)
 
 
-########################## COLOR PALETES ################
-
-phylum_colors <- c("#CBD588","#5F7FC7","purple","#DA5724","#508578","#CD9BCD","#AD6F3B","#673770","#D14285","#652926","#4daf4a","red","#1919ff","darkorchid3","grey","turquoise2","magenta","#47cbac","#d8905e","#6399e5","#787722","#8e461c","#dc87cd","#952741","#822b70","#3e8136","blue","#e0657a","#ffea82","#bbaf48","#5b69c5","#522f87","#66c873","#d39739","yellow","#cc4c92","#94bc4e","#ac6acd","#c1413a","#d87039")#just a vector of color for plotting later don't worry to much about this ;-)
-
-library(wesanderson)
-names(wes_palettes)
-
-ana_co <- c("#15542e","#ffe734","#abc100","#ffa951","#01a39c","#cc73e7","#668578","#0083fb","#00e098","#5dc7ff","#34ea62","#cedfff","#51426b","#fff0c0","#8cffd6")
-
-ana_co2 <- c("#5a7a80","#aa3435","#167223","#800028","#00360f","#802249","#727a2e","#4c071f","#004659","#833d00","#003333","#691100","#ac5c76","#48182a","#b05d54")
-ana_col_alot <- c("#250034","#51b222","#2234b2","#55d876","#8a3ec3","#00b357","#b934b7","#368500","#cf7aff","#00670a","#006cee","#f68117","#00a3fd","#c5590c","#0181d0","#fdb046","#005caa","#8d8e00","#65006b","#c2c55c","#3d0050","#d9be51","#003572","#b57600","#93a4ff","#5a7800","#e275d8","#727e00","#984b91","#76d1a5","#0e001e","#02d2cb","#834d00","#8abcff","#4f3500","#58ceee","#322000","#cdb4f7","#002403","#e89362","#01a4d7","#ad6f4b","#003962","#deba85","#00171b","#c3c28d","#1c1500","#96cbab","#71436c","#00693b","#a37c9e","#1c2600","#9dc6d1","#004b3f","#bdc0c0","#004456","#01947b","#806251","#017788","#016c51")
-
-ana_co3<- c("#5288d7","#cf7c38","#de5052","#8f8e32","#d1db3d","#bb55dc","#ddc562")
-
-ana_co5<- c("#0e5200","#bd8c10","#6164bd","#009f22","#0189fb","#a47e91","#f7671f","#003e8f","#c17cc3","#01a0b8")
-
-ana_co5.2<- c("#6164bd","#bd8c10","#0e5200","#009f22","#0189fb","#a47e91","#f7671f","#003e8f","#c17cc3","#01a0b8")
-
-
-ana_co6<- c("#6164bd","#d07843","#01a0b8","#6d2d00","#648a2c","#211802","#919bb4","#939f87")
-
-ana_co7<- c("#918c31","#007c27","#8d5bcd","#91006c","#d161a8","#7a2f00","#433650","#a47e91")
-
-ana_co8<-c("#bcc8db","#002443","#006b53","#05003b","#24dcde","#784e00","#ffa3f4","#ff7f83","#00c190","#93002f","#ff8d5c","#517b00","#a18600","#0091fb","#e3c543","#cb0054","#002396","#ff4164","#7db100","#6f07c4")
-
-ana_co9<-c("#2d0e6a","#3c8500","#853eb8","#8f8900","#4767e5","#88af54","#3899ff","#cb282a","#02b48f","#fa5780","#0275b9","#920023","#aa94f8","#673377","#7277a3")
-
-
-
-Stage_col<-c("#ff7f83","#c17cc3","#01a0b8")
-
-Stage_col2<- c("#405461","#aaaa37","#b90f73")
-
-Stage_col3 <- c("#de5052","#e3c543","#00a436")
-
-co_jo<- c("#703ebe","#ffa328")
-
-
-
-##########################################################
-########################################################
-
 
 ########################################################
 ############# ALPHA DIVERSITY ALL EGGS ################
 ############# MICROBIOME and MYCOBIOME ################
 ########################################################
-            #MICROBIOME INTERACTION WITH FUNGAL DISEASES#
 
       #############################################
       ##########OBSERVED DIVERSITY GRAPHICS########
       #############################################
-
-
-# ADDING THE COLUM "STAGE" TO HAVE A NICER NAME ON THE GRAPHICS #
-
-
-
-############################################################################################################################PLOTS FOR OBSEVED DIVERSITY#######################################################################################################################
-
-
-levels(Micro_EGG_alfa$Stage)
-
-Micro_EGG_alfa$SampleFrom<-factor((Micro_EGG_alfa$Stage), levels = c("UnhatchedEggED","UnhatchedEggLD","HatchedEgg"), labels= c("Inner eggshell","Inner eggshell","Inner eggshell"))
-
-levels(Micro_EGG_alfa$SampleFrom)
-
-levels(Micro_EGG_alfa$FSSC2)
-
-#######
-
-Fungi_EGG_alfa$SampleFrom<-factor((Fungi_EGG_alfa$Stage), levels = c("UnhatchedEggED","UnhatchedEggLD","HatchedEgg"), labels= c("Inner eggshell","Inner eggshell","Inner eggshell"))
-
-levels(Fungi_EGG_alfa$SampleFrom)
-
-factor(Fungi_EGG_alfa$SampleForm)
-
-
-Micro_EGG_class_df<- fast_melt(Micro_EGG_class)
-
-
-write.table(Micro_EGG_class_df, file = "Micro_EGG_class_df.txt", sep = "\t", row.names = TRUE, col.names = NA)
-
 
 ##################################################################################################################################################   ALPHA RESULTS AND PLOTS FOR 16S AND ITS #######################################################################################################################################################
 
@@ -180,20 +106,14 @@ Micro3Egg<-ggplot(Micro_EGG_alfa,
        theme(panel.grid.minor = element_line(size = 0.05), panel.grid.major = element_line(size = 0.05))
 
 
-
-Micro3Egg<-Micro3Egg + scale_x_discrete(labels=c("UnhatchedEggED" = "Failed E.D.\negg","UnhatchedEggLD" = "Failed L.D.\negg","HatchedEgg" = "Hatched\negg"))
-
-Micro3Egg
-
-
-
+### best model for observed
 M1Inf.1<- glm.nb(observed~Stage+FSSC2,data=Micro_EGG_alfa, method= "glm.fit", na.action = na.fail, link =log)
 summary(M1Inf.1)
 
 summary(glht(M1Inf.1, mcp(Stage="Tukey")))
 summary(glht(M1Inf.1, mcp(FSSC2="Tukey")))
 
-### Check if interaction is signficant
+### Check if interaction is significant
 M1Inf<- glm.nb(observed~Stage*FSSC2,data=Micro_EGG_alfa, method= "glm.fit", na.action = na.fail, link =log)
 anova(M1Inf)
 
@@ -215,11 +135,6 @@ Fungi3Egg<-ggplot(Fungi_EGG_alfa,
          shape=guide_legend(title = waiver(), position = "right", reverse = TRUE, keywith = 1, keyheight = 1)) + theme(legend.title= element_text(size=16)) + scale_fill_manual(labels=c("Uninfected", "Infected"), values= co_jo)+theme(strip.text.x = element_text(size = 16))+theme(axis.text=element_text(size = 14))+theme(axis.title=element_text(size = 16))+
   scale_x_discrete(labels = function(x) str_wrap(x, width = 18))+ theme(legend.text = element_text(size = 16))+
        theme(panel.grid.minor = element_line(size = 0.05), panel.grid.major = element_line(size = 0.05))
-
-Fungi3Egg<-Fungi3Egg + scale_x_discrete(labels=c("UnhatchedEggED" = "Failed E.D.\negg","UnhatchedEggLD" = "Failed L.D.\negg","HatchedEgg" = "Hatched\negg"))
-
-
-Fungi3Egg
 
 
 FM1Inf.4<- glm.nb(observed~FSSC2+Stage,data=Fungi_EGG_alfa, na.action = na.fail)
@@ -251,11 +166,6 @@ Micro4Egg<-ggplot(Micro_EGG_alfa,
   scale_x_discrete(labels = function(x) str_wrap(x, width = 18))+ theme(legend.text = element_text(size = 16))+
        theme(panel.grid.minor = element_line(size = 0.05), panel.grid.major = element_line(size = 0.05))
 
-Micro4Egg<-Micro4Egg + scale_x_discrete(labels=c("UnhatchedEggED" = "Failed E.D.\negg","UnhatchedEggLD" = "Failed L.D.\negg","HatchedEgg" = "Hatched\negg"))
-
-
-Micro4Egg
-
 
 M1Inf_sh<- glm(diversity_shannon~Stage+FSSC2, data=Micro_EGG_alfa,na.action=na.fail, family= Gamma(identity))
 
@@ -282,11 +192,6 @@ Fungi4Egg<-ggplot(Fungi_EGG_alfa,
        theme(panel.grid.minor = element_line(size = 0.05), panel.grid.major = element_line(size = 0.05))
 
 
-Fungi4Egg<-Fungi4Egg + scale_x_discrete(labels=c("UnhatchedEggED" = "Failed E.D.\negg","UnhatchedEggLD" = "Failed L.D.\negg","HatchedEgg" = "Hatched\negg"))
-
-Fungi4Egg
-
-
 FM5Inf_sh<-glmmTMB(diversity_shannon~Stage+FSSC2, family=ziGamma(link="log"), ziformula=~1, data= Fungi_EGG_alfa, na.action=na.fail)
 
 summary(FM5Inf_sh)
@@ -302,7 +207,6 @@ summary(glht(FM5Inf_sh, mcp(FSSC2="Tukey")))
 my_comparisons = list(c("UnhatchedEggLD", "UnhatchedEggED"),c('HatchedEgg','UnhatchedEggED'),c('HatchedEgg','UnhatchedEggLD'))
 
 (Fungi4Egg <- Fungi4Egg + geom_signif(stat = "identity", data = data.frame(x = c(0.7, 1.7, 2.7), xend = c(1.3, 2.3, 3.3), y = c(4.2, 4.2, 4.2), annotation = c(" NS ", "   NS   ", "  NS  ")), aes(x = x, xend = xend, y = y, yend = y, annotation = annotation, group = annotation)) + geom_signif(comparisons = my_comparisons, map_signif_level=TRUE, y_position = c(4.4, 4.8, 5.2), annotation = c("NS ", "NS ", "NS ")))
-
 
 
 
@@ -328,9 +232,97 @@ dev.off()
 
 
 
+############# ALPHA DIVERSITY STATS
 
 
-   ##############################################################################################################################################################STATS ANALYSIS 16S and ITS INFECTION AND HATCHING SUCCESS AS RESPONSE VARIABLE AND DIVERSTIY AS EXPLANATORY VARIABLE ##########################################################################################################################################################
+##### Single diversity metric per model#####
+
+#### with interaction term
+
+B1_obs <- glm.nb(observed~FSSC2*Stage,data=Micro_EGG_alfa, na.action = na.fail)
+
+B1_sh <- glm(diversity_shannon~Stage*FSSC2, data=Micro_EGG_alfa,na.action=na.fail, family= Gamma(identity))
+
+F1_obs <- glm.nb(observed~FSSC2*Stage,data=Fungi_EGG_alfa, na.action = na.fail)
+
+F1_sh <- glmmTMB(diversity_shannon~Stage*FSSC2, family=ziGamma(link="log"), ziformula=~1, data= Fungi_EGG_alfa, na.action=na.fail)
+
+
+#### without the interaction term
+
+B2_obs <- glm.nb(observed~FSSC2+Stage,data=Micro_EGG_alfa, na.action = na.fail)
+
+B2_sh <- glm(diversity_shannon~FSSC2+Stage, data=Micro_EGG_alfa,na.action=na.fail, family= Gamma(identity))
+
+F2_obs <- glm.nb(observed~FSSC2+Stage,data=Fungi_EGG_alfa, na.action = na.fail)
+
+F2_sh <- glmmTMB(diversity_shannon~FSSC2+Stage, family=ziGamma(link="log"), ziformula=~1, data= Fungi_EGG_alfa, na.action=na.fail)
+
+
+#### developmental stage as a single variable 
+
+B3_obs <- glm.nb(observed~Stage,data=Micro_EGG_alfa, na.action = na.fail)
+
+B3_sh <- glm(diversity_shannon~Stage, data=Micro_EGG_alfa,na.action=na.fail, family= Gamma(identity))
+
+F3_obs <- glm.nb(observed~Stage,data=Fungi_EGG_alfa, na.action = na.fail)
+
+F3_sh <- glmmTMB(diversity_shannon~Stage, family=ziGamma(link="log"), ziformula=~1, data= Fungi_EGG_alfa, na.action=na.fail)
+
+
+### model comparison to report the effect of infection with the interaction term FSSC
+
+anova(B1_obs,B3_obs)
+MuMIn::AICc(B1_obs,B3_obs)
+anova(B1_sh,B3_sh)
+MuMIn::AICc(B1_sh,B3_sh)
+anova(F1_obs,F3_obs)
+MuMIn::AICc(F1_obs,F3_obs)
+anova(F1_sh,F3_sh)
+MuMIn::AICc(F1_sh,F3_sh)
+
+
+
+### model comparison to report the effect of infection without the interaction term FSSC
+
+anova(B2_obs,B3_obs)
+MuMIn::AICc(B2_obs,B3_obs)
+anova(B2_sh,B3_sh)
+MuMIn::AICc(B2_sh,B3_sh)
+anova(F2_obs,F3_obs)
+MuMIn::AICc(F2_obs,F3_obs)
+anova(F2_sh,F3_sh)
+MuMIn::AICc(F2_sh,F3_sh)
+
+
+#### fusariosis infection status as a single variable 
+
+B4_obs <- glm.nb(observed~FSSC2,data=Micro_EGG_alfa, na.action = na.fail)
+
+B4_sh <- glm(diversity_shannon~FSSC2, data=Micro_EGG_alfa,na.action=na.fail, family= Gamma(identity))
+
+F4_obs <- glm.nb(observed~FSSC2,data=Fungi_EGG_alfa, na.action = na.fail)
+
+F4_sh <- glmmTMB(diversity_shannon~FSSC2, family=ziGamma(link="log"), ziformula=~1, data= Fungi_EGG_alfa, na.action=na.fail)
+
+
+
+###### model comparison to report the effect of development
+
+anova(B2_obs,B4_obs)
+MuMIn::AICc(B2_obs,B4_obs)
+anova(B2_sh,B4_sh, test= "F")
+MuMIn::AICc(B2_sh,B4_sh)
+anova(F2_obs,F4_obs)
+MuMIn::AICc(F2_obs,F4_obs)
+anova(F2_sh,F4_sh)
+MuMIn::AICc(F2_sh,F4_sh)
+
+
+
+
+
+##############################################################################################################################################################STATS ANALYSIS 16S and ITS INFECTION AND HATCHING SUCCESS AS RESPONSE VARIABLE AND DIVERSTIY AS EXPLANATORY VARIABLE ##########################################################################################################################################################
 
 
 PredictInf <- read.csv("AlphaBetaMicroFungi_Table.csv")
