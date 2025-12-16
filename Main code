@@ -460,40 +460,10 @@ anova(Mdist2_inf_2)
 ### MYCOBIOME
 ###############
 
-mdtfungi<-fast_melt(ITS_EGG_class)
-prevdtfungi = mdtfungi[, list(Prevalence = sum(count > 0), 
-                    TotalCounts = sum(count)),
-             by = TaxaID]
-prevdtfungi
-
-hist(prevdtfungi$Prevalence,breaks=100)
-
 
 Fungi_EGG_comp<-microbiome::transform(ITS_EGG_class,trans="rclr")
- 
 
 Fungi_EGG_comp<-speedyseq::tree_glom(Fungi_EGG_comp, 0.05)
-#?tree_glom
-
-
-library(forcats)
-
-factor(sample_data(Fungi_EGG_comp)$EggViability)
-factor(sample_data(Fungi_EGG_comp)$TEFPCR)
-
-V<-factor(sample_data(Fungi_EGG_comp)$EggViability)
-P<-factor(sample_data(Fungi_EGG_comp)$TEFPCR)
-
-infecstatus<-fct_cross(V,P)
-
-sample_data(Fungi_EGG_comp)$infecstatus<- infecstatus
-factor(sample_data(Fungi_EGG_comp)$infecstatus)
-
-InfectionStatus<-factor(sample_data(Fungi_EGG_comp)$infecstatus, levels=c("HE:EFiNeg","HVE:EFiNeg", "RE:EFiNeg", "RVE:EFiNeg", "HE:EFiPos","HVE:EFiPos","RE:EFiPos","RVE:EFiPos"), labels=c("VisualUninfected-PCRNeg","VisualUninfected-PCRNeg","VisualInfected-PCRNeg","VisualInfected-PCRNeg","VisualUninfected-PCRPos","VisualUninfected-PCRPos","VisualInfected-PCRPos","VisualInfected-PCRPos"))
-
-sample_data(Fungi_EGG_comp)$InfectionStatus<-InfectionStatus
-
-factor(sample_data(Fungi_EGG_comp)$InfectionStatus)
 
 
 factor(sample_data(Fungi_EGG_comp)$FSSC2)
@@ -523,30 +493,8 @@ sample_data(Fungi_EGG_comp)$Infection_Hatching<-Infection_Hatching
 factor(sample_data(Fungi_EGG_comp)$Infection_Hatching)
 
 
-factor(sample_data(Fungi_EGG_comp)$Stage)
-
-
-head(sample_data(Fungi_EGG_comp))
-
-
-length(sample_data(Fungi_EGG_comp)$Stage)
-rep("a",times=109)
-
-
 otuEGGfungi<- abundances(Fungi_EGG_comp)
 metaEGGfungi<- meta(Fungi_EGG_comp)
-
-
-head(metaEGGfungi)
-
-levels(metaEGGfungi$Stage) 
-
-
-distEGGfungi<- vegdist(t(otuEGGfungi),method="euclidean")
-
-pairwise_e <- pairwise.adonis(distEGGfungi,metaEGGfungi$FSSC2)
-
-pairwise_e
 
 
 fungimatrix <- t(otuEGGfungi)
@@ -555,9 +503,9 @@ fungiRDAprw1 <- multiconstrained(method="rda", fungimatrix ~ Stage, data=metaEGG
 
 fungiRDAprw1
 
-
 fungiRDAprw2 <- multiconstrained(method="rda", fungimatrix ~ Infection_Hatching, data=metaEGGfungi, distance="euclidean",add=TRUE)
 
+fungiRDAprw2
 
 
 reggFSSCfungi<-rda(t(otuEGGfungi)~FSSC2*Stage,data=metaEGGfungi)
@@ -569,8 +517,7 @@ RsquareAdj(reggFSSCfungi)$r.squared
 RsquareAdj(reggFSSCfungi)$adj.r.squared
 
 
-reggFSSCfungiAnova<-anova(reggFSSCfungi, permutations= 9999)
-
+reggFSSCfungiAnova<-anova(reggFSSCfungi, permutations= 99999)
 
 reggFSSCfungi2<-rda(t(otuEGGfungi)~FSSC2+Stage,data=metaEGGfungi)
 summary(reggFSSCfungi2)
@@ -583,6 +530,84 @@ RsquareAdj(reggFSSCfungi2)$adj.r.squared
 ordiR2step(reggFSSCfungi2,reggFSSCfungi)
 
 
+###### ORDINATION 
+
+#### we use this model for figure 1 and 2
+gp.pceegFungi_ed3 <- ordinate(Fungi_EGG_comp, 'RDA', distance= "euclidean", ~Stage+FSSC2)
+
+### SECOND plot for the fungi beta, here we only display the Stage
+(FungeggRDA2<-plot_ordination(Fungi_EGG_comp, gp.pceegFungi_ed3, color="Stage") + geom_point(size=2.5)+theme_light(17)+ scale_color_manual(values = Stage_col3, labels=c("UnhatchedEggED" = "Unhatched\nE.D","UnhatchedEggLD" = "Unhatched\nL.D","HatchedEgg" = "Hatched"))+ theme(axis.text=element_text(size = 14),axis.title=element_text(size = 14),legend.text = element_text(size = 14)) + scale_linetype_manual(values=c(1,5))+ stat_ellipse())
+
+### THIRD plot for the fungi beta, here we only display the infection
+
+(FungeggRDA3<-plot_ordination(Fungi_EGG_comp, gp.pceegFungi_ed3, color="Fusariosis") + geom_point(size=2.5) + theme_light(17) + scale_color_manual(values = co_jo) + theme(axis.text=element_text(size = 14),axis.title=element_text(size = 14),legend.text = element_text(size = 14)) + scale_linetype_manual(values=c(1,3,5))+ stat_ellipse())
+
+gp.pceegFungi_ed2 <- ordinate(Fungi_EGG_comp, 'RDA', distance= "euclidean", ~Stage*FSSC2)
+
+#### THIRD FIGURE
+(FungeggRDA1<-plot_ordination(Fungi_EGG_comp, gp.pceegFungi_ed2, color="Stage", shape= "Fusariosis") + geom_point(size=2.5)+theme_light(17) + scale_color_manual(values = Stage_col3, labels=c("UnhatchedEggED" = "Failed\nE.D eggs","UnhatchedEggLD" = "Failed\nL.D eggs","HatchedEgg" = "Hatched eggs")) + theme(axis.text=element_text(size = 14),axis.title=element_text(size = 14),legend.text = element_text(size = 14)) + scale_linetype_manual(values=c(1,5))+ stat_ellipse(aes(lty=Fusariosis, type = "t", level = 0.95, show.legend=FALSE)) + scale_shape_manual(values=c(15,17)))
+
+
+
+
+
+
+
+
+### here we test the interaction between infection and stage, but this is not supported by the stats
+gp.pceegFungi_ed2 <- ordinate(Fungi_EGG_comp, 'RDA', distance= "euclidean", ~FSSC2*Stage)
+
+
+#### This graphic goes for the paper
+
+#(FungeggRDA1<-plot_ordination(Fungi_EGG_comp, gp.pceegFungi_ed2, color="Stage", shape= "Fusariosis") + geom_point(size=2.5)+geom_point(size=2.5)+theme_light(15)+scale_color_manual(values = Stage_col3) +theme(axis.text=element_text(size = 14))+theme(axis.title=element_text(size = 14))+ theme(legend.text = element_text(size = 14))+ scale_linetype_manual(values=c(1,5))+ stat_ellipse(aes(lty=Fusariosis, type = "t", level = 0.95, show.legend=FALSE)))
+
+#(FungeggRDA<-plot_ordination(Fungi_EGG_comp, gp.pceegFungi_ed, color="Fusariosis") + geom_point(size=2.5)+geom_point(size=2.5)+theme_light(15)+scale_color_manual(values = ana_co5) +theme(axis.text=element_text(size = 14))+theme(axis.title=element_text(size = 14))+ theme(legend.text = element_text(size = 14))+ scale_linetype_manual(values=c(1,2,3))+ stat_ellipse(aes(lty=Fusariosis), type = "t", level = 0.95, show.legend=FALSE))
+
+#(FungeggRDA2<-plot_ordination(Fungi_EGG_comp, gp.pceegFungi_ed2, color="Stage", shape="FSSC2") + geom_point(size=2.5)+geom_point(size=2.5)+theme_light(15)+scale_color_manual(values = ana_co5) +theme(axis.text=element_text(size = 14))+theme(axis.title=element_text(size = 14))+ theme(legend.text = element_text(size = 14))+ scale_linetype_manual(values=c(1,2,3))+ stat_ellipse(aes(lty=factor(FSSC2)), type = "t", level = 0.95, show.legend=FALSE) + guides(color = guide_legend(title = "Hatching/Fusariosis")))
+
+#FungeggRDA3<-plot_ordination(Fungi_EGG_comp, gp.pceegFungi_ed2, color="FSSC2") + geom_point(size=2.5)+ stat_ellipse(type = "norm", linetype = 2)+geom_point(size=2.5)+theme_light()+scale_color_manual(values = ana_co5) +theme(axis.text=element_text(size = 14))+theme(axis.title=element_text(size = 14))+ theme(legend.text = element_text(size = 11))
+
+
+
+
+##### NEW DISTANCE CALCULATIONS MADE WITH MARK
+
+length(sample_data(Fungi_EGG_comp)$Stage)
+
+metaEGGfungi$bedista<-rep("a",times=109)
+
+metaEGGfungi$betadist1<-betadisper(distEGGfungi,metaEGGfungi$bedista, type = "median")$distance
+
+hist(metaEGGfungi$betadist1,breaks=50)
+
+
+
+m1<- gls(betadist1~Stage+FSSC2, data=metaEGGfungi,weights = varIdent(form = ~ 1|FSSC2),method="ML")
+plot(m1)
+
+m2<- gls(betadist1~Stage+FSSC2, data=metaEGGfungi,weights = varIdent(form = ~ 1|Stage),method="ML")
+
+m3<- gls(betadist1~Stage*FSSC2, data=metaEGGfungi,weights = varIdent(form = ~ 1|Stage),method="ML")
+
+m4<- gls(betadist1~Stage*FSSC2, data=metaEGGfungi,weights = varIdent(form = ~ 1|FSSC2),method="ML")
+
+AIC(m1,m2,m3,m4)
+
+
+write.table(metaEGGfungi,file = "ITSBetaDist.txt", sep = "\t", row.names = TRUE, col.names = NA)
+
+summary(m2)
+dredge(m2)
+
+summary(glht(m2, mcp(Stage="Tukey")))
+summary(glht(m2, mcp(FSSC2="Tukey")))
+
+plot(glht(m2, mcp(Stage="Tukey")))
+
+
+
+Displot_Inf_Hatch_fungi<-ggplot(metaEGGfungi, 
        aes(x = Stage, y = betadist1))+
   geom_boxplot(outlier.shape=NA, aes(fill= FSSC2))+theme_linedraw(17)+
   geom_jitter(colour= "black", position=position_dodge(0.75), size=1.5,aes(fill= FSSC2))+
@@ -600,6 +625,28 @@ Displot_Inf_Hatch_fungi
 my_comparisons = list(c("UnhatchedEggLD", "UnhatchedEggED"),c('HatchedEgg','UnhatchedEggED'),c('HatchedEgg','UnhatchedEggLD'))
 
 (Displot_Inf_Hatch_fungi <- Displot_Inf_Hatch_fungi + geom_signif(stat = "identity", data = data.frame(x = c(0.7, 1.7, 2.7), xend = c(1.3, 2.3, 3.3), y = c(30, 30, 30), annotation = c("NS.", "  NS.  ", " NS. ")), aes(x = x, xend = xend, y = y, yend = y, annotation = annotation, group = annotation)) + geom_signif(comparisons = my_comparisons, map_signif_level=TRUE, y_position = c(32, 35, 38), annotation = c("NS.", "NS.", "NS.")))
+
+
+###### THIS IS THE FIGURE (MAYBE) FOR BETA DIVERSITY OF ITS
+
+png("Figures/ITS_Betadiv_disp.png",width=5800, height=2700,res=300)
+
+pushViewport(viewport(layout = grid.layout(15,30)))
+vplayout <- function(x, y) viewport(layout.pos.row = x, layout.pos.col = y)
+print(FungeggRDA1+ggtitle("A")+ theme(legend.text = element_text(size = 12))+theme(legend.position=c(.10,.88), legend.direction="vertical"), vp = vplayout(1:15,1:18))
+print(Displot_Inf_Hatch_fungi+ggtitle("B")+ theme(legend.text = element_text(size = 12))+ theme(legend.position=c(.10,.95), legend.direction="vertical",axis.title.x =element_blank()),, vp = vplayout(1:15,19:30))
+
+dev.off()
+
+
+
+####### betaplots merged
+
+
+legend = gtable_filter(ggplotGrob(Micro3Egg), "guide-box")
+
+
+
 
 
 ###### Stats for Betadiversity
@@ -620,13 +667,57 @@ summary(glht(m2, mcp(FSSC2="Tukey")))
 
 summary(m2)
 
+#Generalized least squares fit by maximum likelihood
+#  Model: betadist1 ~ Stage + FSSC2 
+#  Data: metaEGGfungi 
+#       AIC      BIC    logLik
+#  645.1042 663.9436 -315.5521
+#
+#Variance function:
+# Structure: Different standard deviations per stratum
+# Formula: ~1 | Stage 
+# Parameter estimates:
+#    HatchedEgg UnhatchedEggED UnhatchedEggLD 
+#      1.000000       2.456150       1.415293 
+#
+#Coefficients:
+#                        Value Std.Error   t-value p-value
+#(Intercept)          5.819739 0.7961834  7.309546  0.0000
+#StageUnhatchedEggLD -0.345845 1.0293981 -0.335968  0.7376
+#StageHatchedEgg      1.106494 0.8735892  1.266607  0.2081
+#FSSC2FSSC_Infected   0.179945 0.7766108  0.231705  0.8172
+#
+# Correlation: 
+#                    (Intr) StUELD StgHtE
+#StageUnhatchedEggLD -0.522              
+#StageHatchedEgg     -0.738  0.453       
+#FSSC2FSSC_Infected  -0.625  0.081  0.292
+#
+#Standardized residuals:
+#        Min          Q1         Med          Q3         Max 
+#-1.74707833 -0.70807992 -0.06065894  0.33329971  4.23601821 
+#
+#Residual standard error: 2.192856 
+#Degrees of freedom: 109 total; 105 residual
+
 
 
 dredge(m2, extra="adjR^2")
 
+#> dredge(m2, extra="adjR^2")
+#Fixed term is "(Intercept)"#
+#Global model call: gls(model = betadist1 ~ Stage + FSSC2, data = metaEGGfungi,# weights = varIdent(form = ~1 | 
+#    Stage), method = "ML")
+#---
+#Model selection table 
+#  (Intrc) FSSC2 Stage adjR^2 df   logLik  AICc delta weight
+#1   6.308             0.1470  4 -316.907 642.2  0.00  0.531
+#3   5.935           + 0.1676  6 -315.579 644.0  1.78  0.218
+#2   6.380     +       0.1473  5 -316.890 644.4  2.16  0.180
+#4   5.820     +     + 0.1680  7 -315.552 646.2  4.01  0.071
+#Models ranked by AICc(x)
 
 
-anova(m2)
 
 levels(metaEGGfungi$Stage)
 
@@ -645,43 +736,45 @@ summary(glht(m2))$test
 summary(m2)
 
 
-######## Bacterial and fungal betadiversity plots
-
-library(grid)
-library(gtable)
-#install.packages("lemon")
-library(lemon)
+(posthocOptimalB<-summary(glht(m2,linfct=c("StageUnhatchedEggLD == 0","StageHatchedEgg == 0","StageUnhatchedEggLD - StageHatchedEgg == 0"))))
 
 
-legend1b = g_legend(PeggRDA1+ theme(legend.box="vertical",legend.position = "bottom"))
+StageFigbeta<-c("L.D - E.D.","Hatched Egg - E.D","L.D. - Hatched Egg")
 
-legend1 = gtable_filter(ggplotGrob(PeggRDA1 + theme(legend.title = element_text(margin = margin(r = 20)),legend.text = element_text(margin = margin(r = 15)),legend.box="horizontal",legend.position = "bottom",legend.key.width = unit(2, "line"))), "guide-box")
+StageFigbeta
 
-legend3 = gtable_filter(ggplotGrob(PeggRDA3 + theme(legend.title = element_text(margin = margin(r = 20)),legend.text = element_text(margin = margin(r = 10)),legend.box="horizontal",legend.position = "bottom",legend.key.width = unit(2, "line"))), "guide-box")
+str(posthocOptimalB$test)
+posthocOptimalB$test$sigma
+posthocOptimalB$test
+posthocOptimalB$test$qfunction
 
-png("Figures/Betadiv_disp_All_final.png",width=6200, height=4400,res=300)
+Confbeta<-confint(glht(m2,linfct=c("StageUnhatchedEggLD == 0","StageHatchedEgg == 0","StageUnhatchedEggLD - StageHatchedEgg == 0")))
 
-pushViewport(viewport(layout = grid.layout(225,100)))
-vplayout <- function(x, y) viewport(layout.pos.row = x, layout.pos.col = y)
-print(PeggRDA2+ggtitle("Bacteriome", subtitle= "(a)")+ theme(plot.title= element_text(hjust = -0.25, vjust = -0.8, size = 24), plot.subtitle=element_text(hjust = 0, vjust = -0.13, size = 16)) + theme(legend.position=""), vp = vplayout(1:102,1:20))
-print(PeggRDA3+ggtitle("", subtitle="(b)")+ theme(plot.title= element_text(hjust = -0.38, vjust = -0.8, size = 24), plot.subtitle=element_text(hjust = 0, vjust = -0.13, size = 16)) + theme(legend.position=""), vp = vplayout(1:102,21:40))
-print(PeggRDA1+ggtitle("", subtitle="(c)")+ theme(plot.title= element_text(hjust = -0.38, vjust = -0.8, size = 24), plot.subtitle=element_text(hjust = 0, vjust = -0.13, size = 16)) + theme(legend.position=""), vp = vplayout(1:102,41:60))
-print(Displot_Inf_Hatch3+ggtitle("", subtitle="(d)")+ theme(plot.title= element_text(hjust = -0.38, vjust = -0.8, size = 24), plot.subtitle=element_text(hjust = 0, vjust = -0.13, size = 16)) + theme(legend.position="none",axis.title.x =element_blank()),, vp = vplayout(1:100,61:100))
+Confbeta<-data.frame(Confbeta$confint)
+
+(posthocOptimalBDF<-data.frame(cbind(Coefficient=posthocOptimalB$test$coefficients,SE=posthocOptimalB$test$sigma,lwr=Confbeta$lwr,upr=Confbeta$upr,Pvalue=posthocOptimalB$test$pvalues),StageFig=StageFigbeta))
 
 
-print(FungeggRDA2+ggtitle("Mycobiome", subtitle="(e)")+ theme(plot.title= element_text(hjust = -0.32, vjust = -0.8, size = 24), plot.subtitle=element_text(hjust = 0, vjust = -0.13, size = 16)) + theme(legend.text = element_text(size = 12))+theme(legend.position=""), vp = vplayout(102:203,1:20))
-print(FungeggRDA3+ggtitle("", subtitle="(f)")+ theme(plot.title= element_text(hjust = -1.2, vjust = -3.5, size = 24), plot.subtitle=element_text(hjust = 0, vjust = -0.13, size = 16)) + theme(legend.position=""), vp = vplayout(102:203,21:40))
-print(FungeggRDA1+ggtitle("", subtitle="(g)")+ theme(plot.title= element_text(hjust = -1.2, vjust = -3.5, size = 24), plot.subtitle=element_text(hjust = 0, vjust = -0.13, size = 16))+ theme(legend.position=""), vp = vplayout(102:203,41:60))
-print(Displot_Inf_Hatch_fungi+ggtitle("", subtitle="(h)")+ theme(plot.title= element_text(hjust = -1.2, vjust = -3.5, size = 24), plot.subtitle=element_text(hjust = 0, vjust = -0.13, size = 16)) + theme(legend.position="none",axis.title.x =element_blank()),, vp = vplayout(102:203,61:100))
+#(posthocOptimalBDF<-data.frame(cbind(Coefficient=posthocOptimalB$test$coefficients,SE=posthocOptimalB$test$sigma,CI=posthocOptimalB$test$sigma*1.96,Pvalue=posthocOptimalB$test$pvalues),StageFig=StageFigbeta))
 
-legend1$vp = viewport(layout.pos.row = 206:210, layout.pos.col = 35:35)
-grid.draw(legend1)
+head(posthocOptimalBDF)
 
-legend3$vp = viewport(layout.pos.row = 213:200, layout.pos.col = 75:80)
-grid.draw(legend3)
+#write.table(posthocOptimalBDF,"/home/student-gen-a/Dropbox/SharedFolder/MolEcolSecondSub/Tables/posthocOptimalBDF.txt")
 
+posthocOptimalBDF$Sign<-ifelse(posthocOptimalBDF$Pvalue < 0.001, "***", ifelse(posthocOptimalBDF$Pvalue < 0.01, "**", ifelse(posthocOptimalBDF$Pvalue < 0.05, "*",""))) 
+
+
+(CoefPlotbetaITS <- ggplot(posthocOptimalBDF, aes(reorder(StageFigbeta, Coefficient), Coefficient,label = Sign)) +geom_hline(yintercept=0, colour="black", size=0.5) +   geom_pointrange(aes(ymin=lwr, ymax=upr)) +  labs(x="Sample type comparison", y="Estimate", title="Mycobiome Beta diversity") + coord_flip() + theme_bw()+geom_text(nudge_y= 0.01, nudge_x=0.1, size = 5)+theme(axis.text=element_text(size = 12))+theme(axis.title=element_text(size = 14))+theme(title=element_text(size = 12)))
+
+
+png("Figures/ITS_Betadiv_comp.png",width=5800, height=2700,res=300)
+
+CoefPlotbetaITS#p-values adjusted for Tukey multiple comparison.
 
 dev.off()
+
+
+
 
 
 
