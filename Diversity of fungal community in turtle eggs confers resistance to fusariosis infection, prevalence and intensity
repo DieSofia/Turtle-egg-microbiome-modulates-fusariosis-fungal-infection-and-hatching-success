@@ -1,1 +1,721 @@
 
+##### Import data
+PredictInf <- read.csv("AlphaBetaMicroFungi_Table.csv")
+
+### check variables
+PredictInf$Stage
+
+PredictInf$NestID<-factor(PredictInf$NestID)
+
+#### infection variabel -> numeric
+PredictInf$numStage<-ifelse(PredictInf$Stage=="HatchedEgg",1,0)
+
+class(PredictInf$numStage)
+
+ # 0 is UnhatchedLD adn ED
+ # 1 is Hatched
+
+
+levels(factor(PredictInf$FSSC2))
+table(PredictInf$FSSC2)
+table(PredictInf$NestID) # 32 nests
+range(table(PredictInf$NestID)) # between 1 and 10 eggs per nests
+mean(table(PredictInf$NestID)) # with a mean of 4.25
+
+
+PredictInf$observed
+PredictInf$Observed2
+
+PredictInfNoNA <- PredictInf[which(is.na(PredictInf$observed)==FALSE & is.na(PredictInf$Observed2)==FALSE),]
+
+head(PredictInfNoNA)
+
+levels(factor(PredictInfNoNA$FSSC2))
+table(PredictInfNoNA$FSSC2)
+table(PredictInfNoNA$NestID) # 32 nests
+range(table(PredictInfNoNA$NestID)) # between 1 and 8 eggs per nests
+mean(table(PredictInfNoNA$NestID)) # with a mean of 3.344828
+
+
+PredictInfNoNA$observed
+PredictInfNoNA$Observed2
+
+head(PredictInfNoNA)
+
+
+##### testing FSSCAbundance with Scatter Plots
+### HERE IS THE CODE IF SOMETIME IN THE FUTURE WILL BE USEFULL, BUT FOR THESE ANALYSIS WE TRIED ZERO INFLATED MODELS THAT WORK BETTER #####
+
+
+####### DON'T RUN THIS CODE 
+
+#PredictInfNoZero<- subset(PredictInfNoNA, FSSCAbundance != "0")
+#PredictInfNoZero$FSSCAbundance 
+
+#PredictInfNoZero$diversity_shannon2
+
+#formula1<- y ~ s(x, k=3)
+
+#(scatter1<-ggplot(PredictInfNoNA,aes(y=FSSCAbundance, x=diversity_shannon2))+geom_point() +geom_smooth(method= "gam", formula = formula1, method.args= list(family="nb", method= "ML"), colour= "black", orientation= "x", fullrange= TRUE, se=FALSE)+scale_color_manual(values= ana_co5) + theme_classic()+ylab("FSSC ASV abundance")+ xlab("Shannon diversity of ITS"))
+
+#(scatter2<-ggplot(PredictInfNoNA,aes(y=FSSCAbundance, x=diversity_shannon2))+geom_point(aes(colour= FSSC2), size=2) +geom_smooth(method= "gam", formula = formula1, method.args= list(family="nb", method= "ML"), colour= "black", orientation= "x", fullrange= TRUE, se=FALSE)+scale_color_manual(values= ana_co5) + theme_classic()+ylab("FSSC ASV abundance")+ xlab("Shannon diversity of ITS"))
+
+#(scatter3<-ggplot(PredictInfNoNA,aes(y=FSSCAbundance, x=diversity_shannon2))+geom_point() +geom_smooth(method= "gam", formula = formula1, aes(colour=Stage), method.args= list(family="nb", method= "ML"), orientation= "x", fullrange= TRUE, se=FALSE)+scale_color_manual(values= ana_co5) + theme_classic()+ylab("FSSC ASV abundance")+ xlab("Shannon diversity of ITS"))
+
+#(scatter4<-ggplot(PredictInfNoNA,aes(y=FSSCAbundance, x=diversity_shannon2))+geom_point(aes(colour= Stage), size=2) +geom_smooth(method= "gam", formula = formula1, method.args= list(family="nb", method= "ML"), colour= "black", orientation= "x", fullrange= TRUE, se=FALSE)+scale_color_manual(values= ana_co5) + theme_classic()+ylab("FSSC ASV abundance")+ xlab("Shannon diversity of ITS"))
+
+
+#png("Figures/infection_scatter2_multipanel.png" ,width=3250, height=1250,res=300)
+#ggarrange(scatter1 + ggtitle("A"), scatter2 + ggtitle("B"), scatter3 + ggtitle("C"), scatter4 + ggtitle("C"), common.legend = FALSE)
+#dev.off()
+
+
+#######################################################
+##########Zero inflated models with Mark###############
+#######################################################
+
+#######################################################
+######## single variable of diversity per model #######
+#######################################################
+
+
+
+#######################################################
+##### Modelling and plotting infection probability#####
+#######################################################
+library(glmmTMB)
+
+glmmTMB.null <- glmmTMB(FSSCInf ~ 1 + (1|NestID), family = "binomial", data = PredictInfNoNA, na.action = na.fail)
+
+glmmTMB1.1 <- glmmTMB(FSSCInf ~ scale(observed) + (1|NestID), family = "binomial", data = PredictInfNoNA, na.action = na.fail)
+summary(glmmTMB1.1)
+confint(glmmTMB1.1)
+anova(glmmTMB1.1,glmmTMB.null)
+
+
+(FSSC_infection_obs.1 <- ggpredict(glmmTMB1.1, terms = "observed [all]") %>% plot() + theme_classic(14) + xlab("Bacteriome species richness") + ylab("FSSC infection probability") + ggtitle("") + geom_point(data = PredictInfNoNA, aes(x = observed, y = FSSCInf), position = position_jitter(seed = 100, height = 0.025)))
+
+
+glmmTMB1.2 <- glmmTMB(FSSCInf ~ scale(Observed2) + (1|NestID), family = "binomial", data = PredictInfNoNA, na.action = na.fail)
+summary(glmmTMB1.2)
+confint(glmmTMB1.2)
+anova(glmmTMB1.2,glmmTMB.null)
+
+
+(FSSC_infection_obs.2 <- ggpredict(glmmTMB1.2, terms = "Observed2 [all]") %>% plot() + theme_classic(14) + xlab("Mycobiome species richness") + ylab("FSSC infection probability") + ggtitle("") + geom_point(data = PredictInfNoNA, aes(x = Observed2, y = FSSCInf), position = position_jitter(seed = 100, height = 0.025)))
+
+
+glmmTMB1.3 <- glmmTMB(FSSCInf ~ scale(diversity_shannon) + (1|NestID), family = "binomial", data = PredictInfNoNA, na.action = na.fail)
+summary(glmmTMB1.3)
+confint(glmmTMB1.3)
+anova(glmmTMB1.3,glmmTMB.null)
+
+
+
+(FSSC_infection_shannon.3 <- ggpredict(glmmTMB1.3, terms = "diversity_shannon [all]") %>% plot() + theme_classic(14) + xlab("Bacteriome Shannon diversity") + ylab("FSSC infection probability") + ggtitle("") + geom_point(data = PredictInfNoNA, aes(x = diversity_shannon, y = FSSCInf), position = position_jitter(seed = 100, height = 0.025)))
+
+
+glmmTMB1.4 <- glmmTMB(FSSCInf ~ scale(diversity_shannon2) + (1|NestID), family = "binomial", data = PredictInfNoNA, na.action = na.fail)
+summary(glmmTMB1.4)
+confint(glmmTMB1.4)
+anova(glmmTMB1.4,glmmTMB.null)
+
+
+(FSSC_infection_shannon2.4 <- ggpredict(glmmTMB1.4, terms = "diversity_shannon2 [all]") %>% plot(colors = "red")+ theme_classic(14) + xlab("Mycobiome Shannon diversity") + ylab("FSSC infection probability") + ggtitle("") + geom_point(data = PredictInfNoNA, aes(x = diversity_shannon2, y = FSSCInf), position = position_jitter(seed = 100, height = 0.025)))
+
+
+#plot(scale(PredictInfNoNA$betadist),scale(PredictInfNoNA$diversity_shannon))
+
+
+glmmTMB1.5 <- glmmTMB(FSSCInf ~ scale(betadist) + (1|NestID), family = "binomial", data = PredictInfNoNA, na.action = na.fail)
+summary(glmmTMB1.5)
+confint(glmmTMB1.5)
+anova(glmmTMB1.5,glmmTMB.null)
+
+
+(FSSC_infection_beta.5 <- ggpredict(glmmTMB1.5, terms = "betadist [all]") %>% plot()+ theme_classic(14) + xlab("Bacteriome beta diversity") + ylab("FSSC infection probability") + ggtitle("") + geom_point(data = PredictInfNoNA, aes(x = betadist, y = FSSCInf), position = position_jitter(seed = 100, height = 0.025)))
+
+
+glmmTMB1.6 <- glmmTMB(FSSCInf ~ scale(betadist1) + (1|NestID), family = "binomial", data = PredictInfNoNA, na.action = na.fail)
+summary(glmmTMB1.6)
+confint(glmmTMB1.6)
+anova(glmmTMB1.6,glmmTMB.null)
+
+#plot(PredictInfNoNA$betadist1,PredictInfNoNA$diversity_shannon2)
+
+#plot(PredictInfNoNA$betadist1,PredictInfNoNA$Observed2)
+
+
+(FSSC_infection_beta1.6 <- ggpredict(glmmTMB1.6, terms = "betadist1 [all]") %>% plot()+ theme_classic(14) + xlab("Mycobiome beta diversity") + ylab("FSSC infection probability") + ggtitle("") + geom_point(data = PredictInfNoNA, aes(x = betadist1, y = FSSCInf), position = position_jitter(seed = 100, height = 0.025)))
+
+
+
+
+
+###### plotting all the results for Supplementary figures
+
+png("Figures/FSSC_infection_plots.png",height=3500, width=3500,res=300)
+
+(FSSC_infection_obs.1 + ggtitle("(a)") | FSSC_infection_obs.2 + ggtitle("(b)")) / (FSSC_infection_shannon.3 + ggtitle("(c)") | FSSC_infection_shannon2.4 + ggtitle("(d)")) / (FSSC_infection_beta.5 + ggtitle("(e)") | FSSC_infection_beta1.6 + ggtitle("(f)"))
+
+dev.off()
+
+
+#### Effect of random factor 
+library(lme4)
+glmm1 <- glmer(FSSCInf ~ scale(diversity_shannon2) + (1|NestID), family = "binomial", data = PredictInfNoNA, na.action = na.fail)
+summary(glmm1)
+confint(glmm1)
+
+
+glm1 <- glm(FSSCInf ~ scale(diversity_shannon2), family = "binomial", data = PredictInfNoNA, na.action = na.fail)
+summary(glm1)
+confint(glm1)
+
+anova(glmm1,glm1)
+
+
+#######################################################
+############## Modelling and plotting abundance########
+#######################################################
+PredictInfNoNA_no0 <- PredictInfNoNA[which(PredictInfNoNA$FSSCAbundance > 0),]
+
+
+glmmTMB.null <- glmmTMB(FSSCAbundance ~ 1 + (1|NestID), family = "truncated_nbinom2", data = PredictInfNoNA_no0, na.action = na.fail)
+
+glmmTMB1.1 <- glmmTMB(FSSCAbundance ~ scale(observed) + (1|NestID), family = "truncated_nbinom2", data = PredictInfNoNA_no0, na.action = na.fail)
+summary(glmmTMB1.1)
+confint(glmmTMB1.1)
+anova(glmmTMB1.1,glmmTMB.null)
+
+(FSSC_abundance_obs.1 <- ggpredict(glmmTMB1.1, terms = "observed [all]") %>% plot() + theme_classic(14) + xlab("Bacteriome species richness") + ylab("FSSC ASV abundance") + ggtitle("") + geom_point(data = PredictInfNoNA_no0, aes(x = observed, y = FSSCAbundance)))
+
+
+glmmTMB1.2 <- glmmTMB(FSSCAbundance ~ scale(Observed2) + (1|NestID), family = "truncated_nbinom2", data = PredictInfNoNA_no0, na.action = na.fail)
+summary(glmmTMB1.2)
+confint(glmmTMB1.2)
+anova(glmmTMB1.2,glmmTMB.null)
+
+
+(FSSC_abundance_obs.2 <- ggpredict(glmmTMB1.2, terms = "Observed2 [all]") %>% plot() + theme_classic(14) + xlab("Mycobiome species richness") + ylab("FSSC ASV abundance") + ggtitle("") + geom_point(data = PredictInfNoNA_no0, aes(x = Observed2, y = FSSCAbundance)))
+
+
+glmmTMB1.3 <- glmmTMB(FSSCAbundance ~ scale(diversity_shannon) + (1|NestID), family = "truncated_nbinom2", data = PredictInfNoNA_no0, na.action = na.fail)
+summary(glmmTMB1.3)
+confint(glmmTMB1.3)
+anova(glmmTMB1.3,glmmTMB.null)
+
+
+(FSSC_abundance_shannon.3 <- ggpredict(glmmTMB1.3, terms = "diversity_shannon [all]") %>% plot() + theme_classic(14) + xlab("Bacteriome Shannon diversity") + ylab("FSSC ASV abundance") + ggtitle("") + geom_point(data = PredictInfNoNA_no0, aes(x = diversity_shannon, y = FSSCAbundance)))
+
+
+glmmTMB1.4 <- glmmTMB(FSSCAbundance ~ scale(diversity_shannon2) + (1|NestID), family = "truncated_nbinom2", data = PredictInfNoNA_no0, na.action = na.fail)
+summary(glmmTMB1.4)
+confint(glmmTMB1.4)
+anova(glmmTMB1.4,glmmTMB.null)
+
+
+(FSSC_abundance_shannon2.4 <- ggpredict(glmmTMB1.4, terms = "diversity_shannon2 [all]") %>% plot(colors = "red")+ theme_classic(14) + xlab("Mycobiome Shannon diversity") + ylab("FSSC ASV abundance") + ggtitle("") + geom_point(data = PredictInfNoNA_no0, aes(x = diversity_shannon2, y = FSSCAbundance)))
+
+
+#plot(scale(PredictInfNoNA_no0$betadist),scale(PredictInfNoNA_no0$diversity_shannon))
+
+
+glmmTMB1.5 <- glmmTMB(FSSCAbundance ~ scale(betadist) + (1|NestID), family = "truncated_nbinom2", data = PredictInfNoNA_no0, na.action = na.fail)
+summary(glmmTMB1.5)
+confint(glmmTMB1.5)
+anova(glmmTMB1.5,glmmTMB.null)
+
+
+(FSSC_abundance_beta.5 <- ggpredict(glmmTMB1.5, terms = "betadist [all]") %>% plot()+ theme_classic(14) + xlab("Bacteriome beta diversity") + ylab("FSSC ASV abundance") + ggtitle("") + geom_point(data = PredictInfNoNA_no0, aes(x = betadist, y = FSSCAbundance)))
+
+
+glmmTMB1.6 <- glmmTMB(FSSCAbundance ~ scale(betadist1) + (1|NestID), family = "truncated_nbinom2", data = PredictInfNoNA_no0, na.action = na.fail)
+summary(glmmTMB1.6)
+confint(glmmTMB1.6)
+anova(glmmTMB1.6,glmmTMB.null)
+
+
+
+#plot(PredictInfNoNA_no0$betadist1,PredictInfNoNA_no0$diversity_shannon2)
+
+#plot(PredictInfNoNA_no0$betadist1,PredictInfNoNA_no0$Observed2)
+
+
+(FSSC_abundance_beta1.6 <- ggpredict(glmmTMB1.6, terms = "betadist1 [all]") %>% plot()+ theme_classic(14) + xlab("Mycobiome beta diversity") + ylab("FSSC ASV abundance") + ggtitle("") + geom_point(data = PredictInfNoNA_no0, aes(x = betadist1, y = FSSCAbundance)))
+
+
+
+
+png("Figures/FSSC_abundance_plots.png",height=3500, width=3500,res=300)
+
+(FSSC_abundance_obs.1 + ggtitle("(a)") | FSSC_abundance_obs.2 + ggtitle("(b)")) / (FSSC_abundance_shannon.3 + ggtitle("(c)") | FSSC_abundance_shannon2.4 + ggtitle("(d)")) / (FSSC_abundance_beta.5 + ggtitle("(e)") | FSSC_abundance_beta1.6 + ggtitle("(f)"))
+
+dev.off()
+
+
+png("Figures/FSSC_shannon_plots.png", width = 3250, height = 2500,res = 300)
+
+(FSSC_infection_shannon.3 + ggtitle("(a)") | FSSC_abundance_shannon.3 + ggtitle("(b)")) / (FSSC_infection_shannon2.4 + ggtitle("(c)") | FSSC_abundance_shannon2.4 + ggtitle("(d)"))
+
+dev.off()
+
+
+
+(FSSC_infection_obs.1 + ggtitle("(a)") | FSSC_abundance_obs.1 + ggtitle("(b)") | FSSC_infection_obs.2 + ggtitle("(c)") | FSSC_abundance_obs.2 + ggtitle("(d)")) / (FSSC_infection_shannon.3 + ggtitle("(e)") | FSSC_abundance_shannon.3 + ggtitle("(f)") | FSSC_infection_shannon2.4 + ggtitle("(g)") | FSSC_abundance_shannon2.4 + ggtitle("(h)")) / (FSSC_infection_beta.5 + ggtitle("(i)") | FSSC_abundance_beta.5 + ggtitle("(j)") | FSSC_infection_beta1.6 + ggtitle("(k)") | FSSC_abundance_beta1.6 + ggtitle("(l)"))
+
+
+####### FIRST TEST FOR THE PAPER ############## after some test we went for the zero inflated models showed above
+
+    ## Here we want to see if Microbiome and fungal diversity have an effect on probability of infection and hatching success
+
+##### FSSC as RESPONSE VARIABLE ~ ALPHA AND BETA DIVERSITY
+
+### FSSC2 ~ observed + Observed2 + betadist + betadist1 + (1|NestID) ### Are there more variables that we should include?
+
+library(lme4)
+library(car)
+
+
+#### we scale the data to converge the model (09.07.24)
+
+M1 <- glmer(FSSCInf ~ scale(observed) + scale(Observed2) + scale(betadist) + scale(betadist1) + (1|NestID), family = "binomial", data = PredictInfNoNA, na.action = na.fail)
+
+summary(M1)
+plot(M1)
+Anova(M1,type="III")
+
+dredge(M1,extra="adjR^2")
+
+
+M1.1 <- glmer(FSSCInf ~ observed + Observed2 + betadist + betadist1 + (1|NestID), family = "binomial", data = PredictInfNoNA, na.action = na.fail)
+
+
+summary(M1.1)
+
+dredge(M1.1,extra="adjR^2")##### observed without scaling does not converge, so we scale the models with observed and shannon 
+
+
+
+M2 <- glm(FSSCInf ~ scale(observed) + scale(Observed2) + scale(betadist) + scale(betadist1), family = "binomial", data = PredictInfNoNA,na.action = na.fail)
+
+summary(M2)
+plot(M2)
+
+dredge(M2,extra="adjR^2")
+
+
+
+Anova(M2,type="III")
+
+ChiM1M2<- anova(M1,M2, type="III") #Testing significance of random factor. It is significant which is interesting because it means that some nests are more likely to infected than others. We already published this result but it is good to report it again.
+ChiM1M2
+
+drop1(M1,M2)
+
+
+write.table(ChiM1M2, file = "RandomFactorTestObserved.txt", sep = ",", quote = FALSE, row.names = F)
+
+anova(M2)
+
+library(MuMIn)
+ms1<-dredge(M1, extra="adjR^2")
+ms1
+
+#Model selection table 
+#    (Int) scl(btd) scl(bt1) scl(obs) scl(Ob2)  adjR^2 df  logLik  AICc delta  Weight
+#9  0.5484                             -0.4590 0.08653  3 -62.844 131.9  0.00  0.203
+#1  0.4889                                     0.04339  2 -64.480 133.1  1.14  0.114
+#11 0.5631           0.29990           -0.6481 0.09893  4 -62.363 133.2  1.22  0.110
+#13 0.5675                    -0.2185  -0.4399 0.09491  4 -62.519 133.5  1.53  0.094
+#10 0.5600 -0.18070                    -0.4286 0.09189  4 -62.637 133.7  1.76  0.084
+#5  0.5105                    -0.2711          0.05802  3 -63.931 134.1  2.17  0.068
+#2  0.5078 -0.27200                            0.05750  3 -63.951 134.2  2.21  0.067
+#15 0.5837           0.29980  -0.2160  -0.6309 0.10680  5 -62.055 134.8  2.82  0.049
+#12 0.5770 -0.17950  0.30070           -0.6206 0.10400  5 -62.165 135.0  3.04  0.044
+#3  0.4904          -0.05898                   0.04422  3 -64.448 135.2  3.21  0.041
+#14 0.5677  0.05311           -0.2623  -0.4449 0.09503  5 -62.515 135.7  3.74  0.031
+#6  0.5112 -0.12920           -0.1623          0.05882  4 -63.901 136.2  4.29  0.024
+#7  0.5120          -0.04302  -0.2682          0.05844  4 -63.915 136.3  4.32  0.023
+#4  0.5086 -0.26790 -0.03080                   0.05771  4 -63.942 136.3  4.37  0.023
+#16 0.5837  0.05027  0.29950  -0.2574  -0.6354 0.10690  6 -62.051 137.0  5.09  0.016
+#8  0.5123 -0.11970 -0.03645  -0.1678          0.05911  5 -63.890 138.4  6.49  0.008
+#Models ranked by AICc(x) 
+#Random terms (all models): 
+#  1 | NestID
+#
+
+ms2<-dredge(M2, extra="adjR^2")
+ms2
+
+
+
+M3 <- glmer(FSSCInf ~ scale(diversity_shannon) + scale(diversity_shannon2) + scale(betadist) + scale(betadist1) + (1|NestID), family = "binomial", data = PredictInfNoNA, na.action = na.fail)
+
+summary(M3)
+plot(M3)
+
+M3.1 <- glmer(FSSCInf ~ diversity_shannon + diversity_shannon2 + betadist + betadist1 + (1|NestID), family = "binomial", data = PredictInfNoNA, na.action = na.fail)
+
+summary(M3.1)
+dredge(M3.1, extra="adjR^2")
+
+M4 <- glm(FSSCInf ~ diversity_shannon + diversity_shannon2 + betadist + betadist1, family = "binomial", data = PredictInfNoNA)
+summary(M4)
+
+
+ChiM3M4 <- anova(M3,M4, type="III") #Testing significance of random factor. It is significant which is interesting because it means that some nests are more likely to infected than others. We already published this result but it is good to report it again.
+ChiM3M4
+
+write.table(ChiM3M4, file = "RandomFactorTestShannon.txt", sep = ",", quote = FALSE, row.names = F)
+
+
+library(MuMIn)
+ms3<-dredge(M3, extra="adjR^2")
+ms3
+
+#Global model call: glmer(formula = FSSCInf ~ scale(diversity_shannon) + scale(#diversity_shannon2) + 
+#    scale(betadist) + scale(betadist1) + (1 | NestID), data = PredictInfNoNA, 
+#    family = "binomial", na.action = na.fail)
+#---
+#Model selection table 
+#    (Int) scl(btd) scl(bt1) scl(dvr_shn) scl(dvr_sh2)  adjR^2 df  logLik  AICc   delta weight
+#9  0.5964                                     -0.7743 0.15110  3 -60.287 126.8   0.00  0.266
+#11 0.6101           0.38500                   -0.9845 0.17190  4 -59.433 127.3   0.47  0.211
+#10 0.6091  -0.1618                            -0.7601 0.15480  4 -60.136 128.7   1.87  0.104
+#13 0.5767                        0.14910      -0.7815 0.15470  4 -60.143 128.7   1.89  0.104
+#12 0.6227  -0.1807  0.39660                   -0.9754 0.17630  5 -59.252 129.2   2.33  0.083
+#15 0.5932           0.37040      0.12620      -0.9808 0.17430  5 -59.334 129.3   2.50  0.076
+#14 0.5784  -0.4639               0.44900      -0.7569 0.17240  5 -59.412 129.5   2.65  0.071
+#16 0.5906  -0.4650  0.36450      0.42570      -0.9503 0.19130  6 -58.627 130.2   3.35  0.050
+#1  0.4889                                             0.04339  2 -64.480 133.1   6.25  0.012
+#2  0.5078  -0.2720                                    0.05750  3 -63.951 134.2   7.33  0.007
+#3  0.4904          -0.05898                           0.04422  3 -64.448 135.2   8.32  0.004
+#6  0.4783  -0.5167               0.37390              0.07280  4 -63.370 135.2   8.34  0.004
+#5  0.4851                        0.02886              0.04356  3 -64.473 135.2   8.37  0.004
+#4  0.5086  -0.2679 -0.03080                           0.05771  4 -63.942 136.3   9.49  0.002
+#7  0.4856          -0.06295      0.03717              0.04450  4 -64.438 137.3  10.48  0.001
+#8  0.4793  -0.5135 -0.04606      0.37810              0.07329  5 -63.352 137.4  10.53  0.001
+
+#Models ranked by AICc(x) 
+#Random terms (all models): 
+#  1 | NestID
+
+
+
+# It seems that Shannon diversity of ITS is a predictor of FSSC egg infection
+
+M3c <- glmer(FSSCInf ~ diversity_shannon2 + (1|NestID), family = "binomial", data = PredictInfNoNA, na.action = na.fail)
+summary(M3c)
+ms3c<-dredge(M3c, extra="adjR^2")
+ms3c
+#### Fungal Shannon diversity predicts FSSC infection, higher shannon diverstiy lowest the probability of Fusariosis infection. 
+## More competition between fungi?
+
+### Mark tried to plot it in ggplot2 but failed ;-) in the time we had together because he got a spaghetti plot and he does not remember how to fix this.
+##### Mark did it!!
+
+### PLOT 1 Infection vs ITS fungal shannon diverstiy *** this is significant and goes in the MAIN RESULTS. FIRST PLOT
+
+(Shannon_ITS_infection <- ggpredict(M3c, terms = "diversity_shannon2 [all]") %>% plot() + theme_classic() + xlab("Mycobiome Shannon diversity") + ylab("Probability of infection") + ggtitle("") + geom_point(data = PredictInfNoNA, aes(x = diversity_shannon2, y = FSSCInf), position = position_jitter(seed = 100, height = 0.025)))
+
+Shannon_ITS_infection$data
+
+
+#######################################################
+##########Zero inflated models with Mark###############
+#######################################################
+
+#### Second test for the Paper
+      #### FSSC abundance ~ Shannon_ITS
+
+#install.packages("pscl")
+library(pscl)
+
+#install.packages("VGAM")
+library(VGAM)
+
+
+f1 <- formula(FSSCAbundance ~ diversity_shannon2 | diversity_shannon2)
+
+#Nb1 <- zeroinfl(f1, dist = "negbin", link = "logit", data = PredictInfNoNA)
+#summary(Nb1)
+
+
+#P1 <- zeroinfl(f1, dist = "poisson", link = "logit", data = PredictInfNoNA)
+#summary(P1)
+
+
+H1Nb <- hurdle(f1, dist = "negbin", link = "logit", data = PredictInfNoNA)
+summary(H1Nb)
+
+
+Bin1 <- glm(FSSCInf ~ diversity_shannon2, family = "binomial", data = PredictInfNoNA)
+summary(Bin1)
+
+PredictInfNoNANo0<-PredictInfNoNA[which(PredictInfNoNA$FSSCAbundance>0),]
+PredictInfNoNANo0$FSSCAbundance
+PredictInfNoNANo0$diversity_shannon2
+
+
+Truc1 <- vglm(FSSCAbundance ~ diversity_shannon2, family = posnegbinomial, data = PredictInfNoNANo0)
+summary(Truc1)
+
+str(Truc1)
+
+### plot of our first test
+(Shannon_ITS_infection1 <- ggpredict(Bin1, terms = "diversity_shannon2 [all]") %>% plot() + theme_classic(15) + xlab("Mycobiome Shannon diversity") + ylab("Probability of infection") + ggtitle("") + geom_point(data = PredictInfNoNA, aes(x = diversity_shannon2, y = FSSCInf), position = position_jitter(seed = 100, height = 0.025)))
+
+x11()
+
+(Shannon_ITS_infection2 <- ggpredict(Bin1, terms = "diversity_shannon2 [all]") %>% plot() + theme_classic(15) + xlab("Mycobiome Shannon diversity") + ylab("Probability of infection") + ggtitle("") + geom_point(data = PredictInfNoNA, aes(x = diversity_shannon2, y = FSSCInf, color=Stage), position = position_jitter(seed = 100, height = 0.025))+ scale_color_manual(name = "Stage", breaks=c("UnhatchedEggED", "UnhatchedEggLD","HatchedEgg"),labels=c("Unhatched E.D", "Unhatched L.D","Hatched"), values= Stage_col3))
+
+
+
+#install.packages("glmmTMB")
+library(glmmTMB)
+#install.packages(c("insight", "performance"), repos = 'https://easystats.r-universe.dev')
+
+
+
+############ Just to douvle check we run our Zero inflated model with all our diversties, to see if there is an interaction between FSSC abundance and micro and mycobiome 
+
+###we erase the zeros in the dataset 
+
+PredictInfNoNA_no0 <- PredictInfNoNA[which(PredictInfNoNA$FSSCAbundance > 0),]
+PredictInfNoNA_no0$FSSCAbundance
+
+
+
+#glmmTMB1 <- glmmTMB(FSSCAbundance ~ diversity_shannon + diversity_shannon2 + betadist + betadist1 + (1|NestID),zi=~diversity_shannon + diversity_shannon2 + betadist + betadist1, family = "nbinom1", data = PredictInfNoNA, na.action = na.fail)
+
+#summary(glmmTMB1)
+
+#drdgTMB1<-dredge(glmmTMB1)# check the output later
+
+#drdgTMB1
+
+### this is the selected model
+glmmTMB1.2 <- glmmTMB(FSSCAbundance ~ scale(diversity_shannon) + scale(diversity_shannon2) + scale(betadist) + scale(betadist1) + (1|NestID), family = "truncated_nbinom1", data = PredictInfNoNA_no0, na.action = na.fail)
+
+summary(glmmTMB1.2)
+drdgTMB<-dredge(glmmTMB1.2) # check the output later
+drdgTMB
+
+
+#Global model call: glmmTMB(formula = FSSCAbundance ~ scale(diversity_shannon) + 
+#    scale(diversity_shannon2) + scale(betadist) + scale(betadist1) + 
+#    (1 | NestID), data = PredictInfNoNA_no0, family = "truncated_nbinom1", 
+#    na.action = na.fail, ziformula = ~0, dispformula = ~1)
+#---
+#Model selection table 
+#  cnd((Int))  dsp((Int)) cnd(scl(btd)) cnd(scl(bt1)) cnd(scl(dvr_shn)) cnd(scl(dvr_sh2)) df   logLik   AICc delta  weight
+#9      8.875          +                                                   -0.8578        4 -544.633 1098.1  0.00  0.997
+#3      8.939          +                     -0.6669                                      4 -550.392 1109.6 11.52  0.003 
+#1      9.066          +                                                                  3 -554.758 1116.0 17.93  0.000
+#2      9.049          +       -0.1959                                                    4 -554.218 1117.2 19.17  0.000 
+#5      9.064          +                                       -0.1123                    4 -554.517 1117.8 19.77  0.000 
+#
+#               
+#Models ranked by AICc(x) 
+#Random terms (all models): 
+#  cond(1 | NestID)
+
+
+
+
+
+glmmTMB2 <- glmmTMB(FSSCAbundance ~ scale(observed) + scale(Observed2) + scale(betadist) + scale(betadist1) + (1|NestID), family = "truncated_nbinom2", data = PredictInfNoNA_no0, na.action = na.fail)
+
+summary(glmmTMB2)
+
+drdgTMB2<-dredge(glmmTMB2) # check the output later
+
+drdgTMB2
+
+
+glmmTMB2.1 <- glmmTMB(FSSCAbundance ~ observed + Observed2 + betadist + betadist1 + (1|NestID), family = "truncated_nbinom2", data = PredictInfNoNA_no0, na.action = na.fail)
+
+summary(glmmTMB2.1)
+
+drdgTMB2.1<-dredge(glmmTMB2.1) # check the output later
+
+drdgTMB2.1
+
+
+
+glmmTMB1.3 <- glmmTMB(FSSCAbundance ~ scale(observed) + scale(Observed2) + scale(betadist) + scale(betadist1) + (1|NestID),zi=~1 , family = "nbinom1", data = PredictInfNoNA, na.action = na.fail)
+
+summary(glmmTMB1.3)
+
+
+(Betadisp16S_infectionTMB <- ggpredict(glmmTMB1.3, terms = "betadist [all]") %>% plot() + theme_classic() + xlab("Beta diversity dispersion 16S") + ylab("Abundance of FSSC") + ggtitle("") + geom_point(data = PredictInfNoNA, aes(x = betadist, y = FSSCAbundance), position = position_jitter(seed = 100, height = 0.025)))
+
+
+glmmTMB2 <- glmmTMB(FSSCAbundance ~ diversity_shannon2 + (1|NestID),zi=~ diversity_shannon2, family = "nbinom2", data = PredictInfNoNA, na.action = na.fail)
+
+summary(glmmTMB2)
+
+
+
+
+glmmTMB3 <- glmmTMB(FSSCAbundance ~ diversity_shannon2 + (1|NestID),zi=~ diversity_shannon2, family = "nbinom1", data = PredictInfNoNA, na.action = na.fail)
+
+summary(glmmTMB3)
+
+
+### zero inflated model (assumes all 0 are real)
+glmmTMB4 <- glmmTMB(FSSCAbundance ~ diversity_shannon2 + (1|NestID),zi=~ 1, family = "nbinom1", data = PredictInfNoNA, na.action = na.fail)
+
+
+summary(glmmTMB4)
+
+dredge(glmmTMB4)
+
+
+AIC(glmmTMB3, glmmTMB4)
+
+summary(glmmTMB4)
+
+
+(Shannon_ITS_infectionTMB <- ggpredict(glmmTMB4, terms = "diversity_shannon2 [all]") %>% plot() + theme_classic() + xlab("Mycobiome Shannon diversity") + ylab("FSSC Abundance") + ggtitle("") + geom_point(data = PredictInfNoNA, aes(x = diversity_shannon2, y = FSSCAbundance), position = position_jitter(seed = 100, height = 0.025)))
+
+
+
+#### doing a GLMM hurdle
+
+#binomial part
+
+M3c <- glmer(FSSCInf ~ diversity_shannon2 + (1|NestID), family = "binomial", data = PredictInfNoNA, na.action = na.fail)
+summary(M3c)
+
+# this model for the count part 
+####### We select this model for the interaction between FSSC Abundance ~ Shannon_ITS 
+
+#install.packages("lifecontingencies")
+library(lifecontingencies)
+
+glmmTMB5 <- glmmTMB(FSSCAbundance ~ scale(diversity_shannon2) + (1|NestID), family = "truncated_nbinom1", data = PredictInfNoNA_no0, na.action = na.fail)
+
+summary(glmmTMB5)
+
+ss5 <- summary(glmmTMB5)
+pxt(coef(ss5)$cond)
+coef(ss5)$zi
+
+drdgTMB5<-dredge(glmmTMB5)
+drdgTMB5
+
+#install.packages("lmtest")
+library(lmtest)
+
+Anova(glmmTMB5, type="III")
+drop1(glmmTMB5, test= "Chisq")
+
+
+
+(Shannon_ITS_infectionTMB5 <- ggpredict(glmmTMB5, terms = "diversity_shannon2 [all]") %>% plot() + theme_classic(15) + xlab("Mycobiome Shannon diversity") + ylab("ASV Abundance of FSSC") + ggtitle("") + geom_point(data = PredictInfNoNANo0, aes(x = diversity_shannon2, y = FSSCAbundance), position = position_jitter(seed = 100, height = 0.025)))
+
+AIC(H1Nb, glmmTMB5)
+
+
+(Shannon_ITS_infectionTMB5_2 <- ggpredict(glmmTMB5, terms = "diversity_shannon2 [all]") %>% plot() + theme_classic(15) + xlab("Mycobiome Shannon diversity") + ylab("ASV Abundance of FSSC") + ggtitle("") + geom_point(data = PredictInfNoNANo0, aes(x = diversity_shannon2, y = FSSCAbundance, color= Stage), position = position_jitter(seed = 100, height = 0.025))+ scale_color_manual(name = "Stage", breaks=c("UnhatchedEggED", "UnhatchedEggLD","HatchedEgg"),labels=c("Unhatched E.D", "Unhatched L.D","Hatched"), values= Stage_col3))
+
+
+
+##### Our final graphic
+# THIS IS THE FIRST GRAPHIC FOR THE PAPER
+
+png("Figures/infection_abundance_multipanel.png" ,width=3450, height=2500,res=300)
+ggarrange(Shannon_ITS_infection + ggtitle("A"), Shannon_ITS_infectionTMB5 + ggtitle("B") , common.legend = TRUE)
+dev.off()
+
+######## FIRST GRAPHIC FOR THE PAPER WITH THE BACTERIOME SHANNON INCLUDED
+png("Figures/infection_abundance_multipanel_wSha16S.png" ,width=4450, height=2500,res=300)
+ggarrange(Shannon_ITS_infection + ggtitle("a"), Shannon_ITS_infectionTMB5 + ggtitle("b"), Shannon_16S_infection + ggtitle("c") , common.legend = TRUE, ncol = 3, nrow = 1)
+dev.off()
+
+
+(Shannon_16S_infection <- ggpredict(M3d, terms = "diversity_shannon [all]") %>% plot(alpha=.04)+ theme_classic(15) + xlab("Bacteriome Shannon diversity") + ylab("Probability of infection") + ggtitle("") + geom_point(data = PredictInfNoNA, aes(x = diversity_shannon, y = FSSCInf), position = position_jitter(seed = 100, height = 0.025)))
+
+##### The same graphic but with colors
+
+
+png("Figures/infection_abundance_StageColor.png" ,width=3450, height=2500,res=300)
+ggarrange(Shannon_ITS_infection2 + ggtitle("A"), Shannon_ITS_infectionTMB5_2 + ggtitle("B") , common.legend = TRUE)
+dev.off()
+
+
+
+
+
+###### HERE WE PLOT THE REST OF THE DIVERSITIES, 16S ALPHA AND 16S-ITS BETA WHICH DO NOT PREDICT INFECTION 
+##THESE PLOTS ARE FOR THE SUPPLEMENTARY FIGS.
+
+factor(PredictInfNoNA$Stage)
+
+M3d <- glmer(FSSCInf ~ diversity_shannon2 + diversity_shannon + (1|NestID), family = "binomial", data = PredictInfNoNA, na.action = na.fail)
+summary(M3d)
+
+x11()
+
+(Shannon_16S_infection <- ggpredict(M3d, terms = "diversity_shannon [all]") %>% plot(alpha=.04)+ theme_classic(15) + xlab("Bacteriome Shannon diversity") + ylab("Probability of infection") + ggtitle("") + geom_point(data = PredictInfNoNA, aes(x = diversity_shannon, y = FSSCInf), position = position_jitter(seed = 100, height = 0.025)))
+
+(Shannon_16S_infection2 <- ggpredict(M3d, terms = "diversity_shannon [all]") %>% plot(alpha=.04)+ theme_classic(15) + xlab("Bacteriome Shannon diversity") + ylab("Probability of infection") + ggtitle("") + geom_point(data = PredictInfNoNA, aes(x = diversity_shannon, y = FSSCInf, color=Stage), position = position_jitter(seed = 100, height = 0.025))+ scale_color_manual(name = "Stage", breaks=c("UnhatchedEggED", "UnhatchedEggLD","HatchedEgg"),labels=c("Unhatched E.D", "Unhatched L.D","Hatched"), values= Stage_col3))
+
+M4a <- glmer(FSSCInf ~ scale(observed) + scale(Observed2) + (1|NestID), family = "binomial", data = PredictInfNoNA, na.action = na.fail)
+summary(M4a)
+
+
+(Richness_ITS_infection <- ggpredict(M4a, terms = "Observed2 [all]") %>% plot(alpha=.04) + theme_classic(15) + xlab("Mycobiome Species richness") + ylab("Probability of infection") + ggtitle("") + geom_point(data = PredictInfNoNA, aes(x = Observed2, y = FSSCInf), position = position_jitter(seed = 100, height = 0.025)))
+
+
+(Richness_ITS_infection2 <- ggpredict(M4a, terms = "Observed2 [all]") %>% plot(alpha=.04) + theme_classic(15) + xlab("Mycobiome Species richness") + ylab("Probability of infection") + ggtitle("") + geom_point(data = PredictInfNoNA, aes(x = Observed2, y = FSSCInf, color=Stage), position = position_jitter(seed = 100, height = 0.025))+ scale_color_manual(name = "Stage", breaks=c("UnhatchedEggED", "UnhatchedEggLD","HatchedEgg"),labels=c("Unhatched E.D", "Unhatched L.D","Hatched"), values= Stage_col3))
+
+
+(Richness_16S_infection <- ggpredict(M4a, terms = "observed [all]") %>% plot(alpha=.04) + theme_classic(15) + xlab("Bacteriome Species richness") + ylab("Probability of infection") + ggtitle("") + geom_point(data = PredictInfNoNA, aes(x = observed, y = FSSCInf), position = position_jitter(seed = 100, height = 0.025)))
+
+
+(Richness_16S_infection2 <- ggpredict(M4a, terms = "observed [all]") %>% plot(alpha=.04) + theme_classic(15) + xlab("Bacteriome Species richness") + ylab("Probability of infection") + ggtitle("") + geom_point(data = PredictInfNoNA, aes(x = observed, y = FSSCInf, color= Stage), position = position_jitter(seed = 100, height = 0.025))+ scale_color_manual(name = "Stage", breaks=c("UnhatchedEggED", "UnhatchedEggLD","HatchedEgg"),labels=c("Unhatched E.D", "Unhatched L.D","Hatched"), values= Stage_col3))
+
+
+library(ggpubr)
+
+png("Figures/SUP_infection_alphadiv_multipanel.png" ,width=3750, height=3500,res=300)
+ggarrange(Richness_16S_infection + ggtitle("a"), Shannon_16S_infection + ggtitle("b"), Richness_ITS_infection + ggtitle("c"),Shannon_ITS_infection + ggtitle("d"), common.legend = TRUE)
+dev.off()
+
+
+png("Figures/SUP_infection_StageCol_multipanel.png" ,width=3750, height=3500,res=300)
+ggarrange(Richness_16S_infection2 + ggtitle("a"), Shannon_16S_infection2 + ggtitle("b"), Richness_ITS_infection2 + ggtitle("c"),Shannon_ITS_infection2 + ggtitle("d"), common.legend = TRUE)
+dev.off()
+
+
+
+
+M5 <- glmer(FSSCInf ~ scale(diversity_shannon2) + scale(betadist) + scale(betadist1) + (1|NestID), family = "binomial", data = PredictInfNoNA, na.action = na.fail)
+summary(M5)
+
+
+(Beta_ITS_infection <- ggpredict(M5, terms = "betadist1 [all]") %>% plot(alpha= .04) + theme_classic(15) + xlab("Mycobiome Beta-dispersion") + ylab("Probability of infection") + ggtitle("") + geom_point(data = PredictInfNoNA, aes(x = betadist1, y = FSSCInf), position = position_jitter(seed = 100, height = 0.025)))
+
+
+(Beta_ITS_infection2 <- ggpredict(M5, terms = "betadist1 [all]") %>% plot(alpha= .04) + theme_classic(15) + xlab("Mycobiome Beta-dispersion") + ylab("Probability of infection") + ggtitle("") + geom_point(data = PredictInfNoNA, aes(x = betadist1, y = FSSCInf, color=Stage), position = position_jitter(seed = 100, height = 0.025))+ scale_color_manual(name = "Stage", breaks=c("UnhatchedEggED", "UnhatchedEggLD","HatchedEgg"),labels=c("Unhatched E.D", "Unhatched L.D","Hatched"), values= Stage_col3))
+
+
+(Microbiome_16S_infection <- ggpredict(M5, terms = "betadist [all]") %>% plot(alpha= .04) + theme_classic(15) + xlab("Bacteriome Beta-dispersion") + ylab("Probability of infection") + ggtitle("") + geom_point(data = PredictInfNoNA, aes(x = betadist, y = FSSCInf), position = position_jitter(seed = 100, height = 0.025)))
+
+
+(Microbiome_16S_infection2 <- ggpredict(M5, terms = "betadist [all]") %>% plot(alpha= .04) + theme_classic(15) + xlab("Bacteriome Beta-dispersion") + ylab("Probability of infection") + ggtitle("") + geom_point(data = PredictInfNoNA, aes(x = betadist, y = FSSCInf, color=Stage), position = position_jitter(seed = 100, height = 0.025))+ scale_color_manual(name = "Stage", breaks=c("UnhatchedEggED", "UnhatchedEggLD","HatchedEgg"),labels=c("Unhatched E.D", "Unhatched L.D","Hatched"), values= Stage_col3))
+
+
+png("Figures/SUP_infection_betadiv_multipanel.png" ,width=3650, height=2500,res=300)
+ggarrange(Microbiome_16S_infection + ggtitle("a"), Beta_ITS_infection + ggtitle("b"), common.legend = TRUE)
+dev.off()
+
+
+
+png("Figures/SUP_infection_betadiv_StageCol.png" ,width=3650, height=2500,res=300)
+ggarrange(Microbiome_16S_infection2 + ggtitle("a"), Beta_ITS_infection2 + ggtitle("b"), common.legend = TRUE)
+dev.off()
+
