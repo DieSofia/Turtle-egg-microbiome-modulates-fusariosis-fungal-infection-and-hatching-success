@@ -1,1 +1,438 @@
 
+######################################################################
+####### ITS LONG REGION (ITS1 & ITS2) QIIME2, DADA2 AND        ####### 
+#######               CLASSIFIER MAKING SCRIPT                 #######
+######################################################################
+#######            Ana Sofia Carranco - Ulm University         #######
+#######         Contact: anasoficarranco@gmail.comment         #######
+######################################################################
+
+
+activate qiime2
+
+cd yourpath
+
+
+ls 
+
+
+###important fastq files into qiime2 --- ITS LONG MARKER
+qiime tools import \
+  --type 'SampleData[PairedEndSequencesWithQuality]' \
+  --input-path ITS\
+  --input-format CasavaOneEightSingleLanePerSampleDirFmt  \
+  --output-path demux-paired-end.qza
+
+
+qiime cutadapt trim-paired \
+--i-demultiplexed-sequences demux-paired-end.qza \
+--p-front-f NNNNCTTGGTCATTTAGAGGAAGTAA \
+--p-front-r TCCTCCGCTTATTGATATGC \
+--p-error-rate .1 \
+--p-indels \
+--p-match-read-wildcards \
+--p-discard-untrimmed \
+--o-trimmed-sequences run_ITStrimmed.qza \
+--verbose
+
+#######this work--- and the primers are already removed, have a look at the file just to double check the sequences
+
+
+qiime demux summarize \
+    --i-data run_ITStrimmed.qza \
+    --p-n 100000 \
+    --o-visualization run_ITStrimmed.qzv
+
+
+qiime tools view run_ITStrimmed.qzv
+
+
+####### NOW WE HAVE THE FASTQ FILES WITH OUR ITS long REGION. 
+### NOW LEST JUMP TO R AND PROCESS ALL THE DATA WITH DADA2
+
+
+R
+
+## activate all necessary packages 
+
+
+library(BiocManager)
+library("ggplot2")
+library("phyloseq")
+library("microbiome")
+library(gtable)
+library(gridExtra)
+packageVersion("Matrix")
+
+#############################################################
+
+
+
+setwd("yourpath")
+
+newpath<- "yourpath"
+
+#The primer-free sequence files are now ready to be analysed through the DADA2 pipeline. Similar to the earlier steps for reading FASTQ files, we read the names of the cutadapt-ed FASTQ files and perform some string manipulation to obtain the matched lists of forward and reverse FASTQ files.
+
+### following and adapting the pipeline for ITS https://benjjneb.github.io/dada2/ITS_workflow.html
+
+# Forward and reverse fastq filenames have the format:
+cutFs <- sort(list.files(newpath, pattern = "L001_R1_001.fastq.gz", full.names = TRUE))
+cutRs <- sort(list.files(newpath, pattern = "L001_R2_001.fastq.gz", full.names = TRUE))
+
+# Extract sample names, assuming filenames have format:
+get.sample.name <- function(fname) strsplit(basename(fname), "_")[[1]][1]
+sample.names <- unname(sapply(cutFs, get.sample.name))
+head(sample.names)
+
+
+# Let's inspect read quality profiles 
+
+  #Forward reads
+QualProf<-plotQualityProfile(cutFs[1:2])
+
+QualProf
+
+QualProfR<-plotQualityProfile(cutRs[1:2])
+
+QualProfR
+
+
+#Assigning the filenames for the output of the filtered reads to be stored as fastq.gz files.
+
+filtFs <- file.path(newpath, "filtered", basename(cutFs))
+filtRs <- file.path(newpath, "filtered", basename(cutRs))
+
+library(Matrix)
+
+out2 <- filterAndTrim(cutFs, filtFs, cutRs, filtRs, truncQ = 2, maxEE = c(5, 5), maxN = 0, minLen = 20, rm.phix = TRUE, compress = TRUE, multithread = TRUE)
+
+### When deciding on the number of errors you allow, consider that it is not the same as for 16S and depends on the sequence quality. A DADA2-based ITS pipeline study found that maxEE values up to 8 can still perform well for fungal data. Values of c(2, 5) or c(5, 5) are widely used in practice. https://pmc.ncbi.nlm.nih.gov/articles/PMC8765055/
+
+out2<-data.frame(out2)
+
+
+#Learning error rates
+
+errF <- learnErrors(filtFs, multithread = TRUE)
+
+
+errR <- learnErrors(filtRs, multithread = TRUE)
+
+
+plotErrors(errF, nominalQ = TRUE)
+
+
+
+head(sample.names)
+
+## check which samples are still there
+existsF <- file.exists(filtFs)
+existsR <- file.exists(filtRs)
+
+
+derepFs <- derepFastq(filtFs[existsF], verbose=TRUE)
+
+derepRs <- derepFastq(filtRs[existsR], verbose=TRUE)
+
+names(derepFs) <- sample.names[existsF]
+names(derepRs) <- sample.names[existsR]
+
+
+dadaFs <- dada(derepFs, err = errF, multithread = TRUE)
+dadaRs <- dada(derepRs, err = errR, multithread = TRUE)
+
+
+##### just concatenate
+mergers <- mergePairs(dadaFs, derepFs, dadaRs, derepRs, maxMismatch = 3, verbose = TRUE, minOverlap = 12, returnRejects = FALSE, justConcatenate = TRUE, trimOverhang = TRUE)
+
+head(mergers)
+
+
+seqtab <- makeSequenceTable(mergers)
+dim(seqtab)
+names(seqtab)
+
+#Remove chimeras
+
+seqtab.nochim <- removeBimeraDenovo(seqtab, method="consensus", multithread=TRUE, verbose=TRUE)
+
+names(seqtab.nochim)
+
+
+#Inspect distribution of sequence lengths:
+
+table(nchar(getSequences(seqtab.nochim)))
+
+ 
+library(dada2)
+library(Biostrings)
+
+# Give each ASV a short name
+asv_seqs  <- colnames(seqtab.nochim)
+asv_names <- paste0("ASV", seq_along(asv_seqs))
+
+# Create a named vector for the mapping
+names(asv_seqs) <- asv_names
+
+# Export renamed FASTA for QIIME2
+asv_dna <- DNAStringSet(asv_seqs)
+writeXStringSet(asv_dna, "rep-seqs_26.fna")
+
+#Export renamed count table for BIOM conversion
+seqtab_renamed <- seqtab.nochim
+colnames(seqtab_renamed) <- asv_names
+write.table(t(seqtab_renamed), "seq_dadaRITS26.txt", 
+            sep = "\t", quote = FALSE, col.names = NA)
+
+
+ ####  DOING A PHYLOGENETIC TREE FOR THE ITS ASVs (to use later for tree.glom)
+
+library("DECIPHER")
+
+seqs <- getSequences(asv_seqs)
+names(seqs) <- seqs # This propagates to the tip labels of the tree
+alignment <- AlignSeqs(DNAStringSet(seqs), anchor=NA,verbose=FALSE)
+
+
+library("phangorn")
+
+phangAlign <- phyDat(as(alignment, "matrix"), type="DNA")
+dm <- dist.ml(phangAlign)
+treeNJ <- NJ(dm) # Note, tip order != sequence order
+fit = pml(treeNJ, data=phangAlign)
+fitGTR <- update(fit, k=4, inv=0.2)
+fitGTR <- optim.pml(fitGTR, model="GTR", optInv=TRUE, optGamma=TRUE,rearrangement = "stochastic", control = pml.control(trace = 0))
+
+tree<-fitGTR$tree
+
+
+### while the tree runs, go to QIIME and assign taxonomy
+
+
+conda activate qiime2
+
+
+## Path directory
+cd yourpath
+
+ls 
+
+## Importing the reference sequences from the Unite database, current release for Qiime2 (use the latest one)
+
+qiime tools import \
+  --type 'FeatureData[Sequence]' \
+  --input-path sh_refs_qiime_ver9_dynamic_s_29.11.2022.fasta \
+  --output-path Fasta_UNITE_file2.qza
+
+
+## Importing the reference taxonomy from the Unite database, current release for Qiime2 (use the latest one)
+
+qiime tools import \
+--type 'FeatureData[Taxonomy]' \
+--input-format HeaderlessTSVTaxonomyFormat \
+--input-path sh_taxonomy_qiime_ver9_dynamic_s_29.11.2022.txt \
+--output-path ref-ITStaxonomy2.qza
+
+
+
+## Dereplicating the database - Dereplication is the reduction of a set of genomes based on high sequence similarity (e.g., >99% average nucleotide identity) between these genomes. This leads to reads being either randomly distributed across the redundant genomes, with a single random alignment reported from many possible options, or reported at all redundant locations. 
+
+qiime rescript dereplicate \
+    --i-sequences Fasta_UNITE_file2.qza \
+    --i-taxa ref-ITStaxonomy2.qza \
+    --p-threads 32 \
+    --p-mode 'super' \
+    --o-dereplicated-sequences unite-repseqs-unfiltered-derep.qza \
+    --o-dereplicated-taxa unite-taxonomy-unfiltered-derep.qza
+
+  
+
+qiime feature-classifier fit-classifier-naive-bayes \
+--i-reference-reads unite-repseqs-unfiltered-derep.qza \
+--i-reference-taxonomy unite-taxonomy-unfiltered-derep.qza \
+--o-classifier unite-derep-classifier-ref-tax.qza
+
+
+
+#### Importing the results of DADA2 in R to qiime
+#
+
+qiime tools import \
+--input-path rep-seqs.fna \
+--type 'FeatureData[Sequence]' \
+--output-path mydada2-rep-seqs.qza
+
+echo -n 'OT#U Table' | cat - seq_dadaRITS.txt > biom-table.txt
+
+biom convert -i seq_dadaRITS.txt -o table.biom --table-type="OTU table" --to-hdf5
+
+
+qiime tools import \
+--input-path table.biom \
+--type 'FeatureTable[Frequency]' \
+--input-format BIOMV210Format \
+--output-path mydada2-table.qza
+
+
+
+qiime feature-classifier classify-sklearn \
+  --i-classifier unite-derep-classifier-ref-tax.qza \
+  --i-reads mydada2-rep-seqs.qza \
+  --p-n-jobs 34 \
+  --o-classification mytaxonomy-derep-dada2_qiime.qza
+
+
+qiime metadata tabulate \
+  --m-input-file mytaxonomy-derep-dada2_qiime.qza \
+  --o-visualization mytaxonomy-derep-dada2_qiime.qzv
+
+
+#vizualitation 
+qiime tools view mytaxonomy-derep-dada2_qiime.qzv
+
+
+
+mkdir unite_qiime__derep_final
+
+
+qiime tools export \
+    --input-path mytaxonomy-derep-dada2_qiime26.qza \
+    --output-path unite_qiime__derep_final/
+
+qiime tools export \
+    --input-path mydada2-rep-seqs_26.qza \
+    --output-path unite_qiime__derep_final/
+
+qiime tools export \
+    --input-path mydada2-table26.qza \
+    --output-path unite_qiime__derep_final/
+
+
+biom convert -i unite_qiime__derep_final/feature-table.biom -o unite_qiime__derep_final/feature-table.tsv --to-tsv
+
+
+#For some reason, the biom file is transposed the wrong way round. The code below transposes it back the right way:
+
+awk -F '\t' 'BEGIN {OFS = FS} {print $1}' unite_qiime__derep_final/feature-table.tsv
+
+awk 'BEGIN {OFS = FS} NR>1' unite_qiime__derep_final/feature-table.tsv | awk -F '\t' 'BEGIN {OFS = FS}
+{ 
+    for (i=1; i<=NF; i++)  {
+        a[NR,i] = $i
+    }
+}
+NF>p { p = NF }
+END {    
+    for(j=1; j<=p; j++) {
+        str=a[1,j]
+        for(i=2; i<=NR; i++){
+            str=str"\t"a[i,j];
+        }
+        print str
+    }
+}' > unite_qiime__derep_final/feature-table-transpose.tsv
+
+
+subl unite_qiime__derep_final/feature-table-transpose.tsv
+
+sed 's/\"//g' unite_qiime__derep_final/feature-table-transpose.tsv > unite_qiime__derep_final/feature-table-transposeFinal.tsv
+
+subl unite_qiime__derep_final/feature-table-transposeFinal.tsv
+
+
+biom convert -i unite_qiime__derep_final/feature-table-transposeFinal.tsv -o unite_qiime__derep_final/feature-table-transpose.biom --table-type="OTU table" --to-hdf5
+
+sed 's/Feature ID/#OTUID/' unite_qiime__derep_final/taxonomy.tsv | sed 's/Taxon/taxonomy/' | sed 's/Confidence/confidence/' > unite_qiime__derep_final/biom-taxonomy.tsv
+
+
+biom add-metadata \
+    -i unite_qiime__derep_final/feature-table-transpose.biom \
+    -o unite_qiime__derep_final/unite_qiime__derep_final.biom \
+    --observation-metadata-fp unite_qiime__derep_final/biom-taxonomy.tsv \
+    --sc-separated unite_qiime__derep_final
+
+
+#### Now let's go to R
+R
+library(phyloseq)
+library(biomformat)
+
+setwd("yourpath")
+
+biom_obj <- read_biom("feature-table.biom")
+
+otu_mat <- as(biom_data(biom_obj), "matrix")
+OTU <- otu_table(otu_mat, taxa_are_rows = TRUE)
+
+
+UnitedDerep <- phyloseq(OTU)
+UnitedDerep
+
+tax_raw <- read.table("taxonomy.tsv",
+                      header = TRUE, sep = "\t", row.names = 1)
+
+tax_split <- lapply(strsplit(as.character(tax_raw$Taxon), ";\\s*"), function(x) {
+  length(x) <- 7
+  x
+})
+tax_split <- do.call(rbind, tax_split)
+rownames(tax_split) <- rownames(tax_raw)
+colnames(tax_split) <- c("Kingdom","Phylum","Class","Order","Family","Genus","Species")
+
+UnitedDerep <- phyloseq(OTU, tax_table(tax_split))
+UnitedDerep
+
+
+data <- read.table('readmetadat.csv',sep='\t',h=T,row.names=1,check=F,comment='')
+cn   <- colnames(data)
+head(data)
+
+
+#We now construct a phyloseq object directly from the dada2 outputs.
+
+
+
+
+UnitedDerep
+ITS_otu<-tax_table(
+UnitedDerep)
+write.table(ITS_otu, file = "ITS_otu.txt", sep = "\t", row.names = TRUE, col.names = NA)
+
+otu_table(UnitedDerep)
+
+otu_table(UnitedDerep, taxa_are_rows= FALSE)
+
+
+
+ITS_class <- phyloseq(otu_table(UnitedDerep, taxa_are_rows=FALSE), 
+               sample_data(samdf), 
+               tax_table(UnitedDerep), phy_tree(fitGTR$tree))
+
+
+### get the sequences for FrogsFunc later
+seqs <- Biostrings::DNAStringSet(taxa_names(ITS_class))
+names(seqs) <- taxa_names(ITS_class)
+
+
+taxa_names(ITS_class)
+taxa_names(ITS_class) <- paste("", taxa_names(ITS_class), sep="")
+taxa_names(ITS_class)
+
+head(otu_table(ITS_class))
+head(tax_table(ITS_class))
+phy_tree(ITS_class)
+sample_data(ITS_class)
+
+
+
+#phy_tree(ITS_class) <- root(phy_tree(ITS_class), sample(taxa_names(ITS_class), 1), resolve.root = TRUE)
+## if this does not work, use above
+phy_tree(ITS_class) <- midpoint(phy_tree(ITS_class))
+
+is.rooted(phy_tree(ITS_class))
+
+
+
+saveRDS(ITS_class, file = "ITS_class", ascii = FALSE, version = NULL,compress = TRUE, refhook = NULL)
+
