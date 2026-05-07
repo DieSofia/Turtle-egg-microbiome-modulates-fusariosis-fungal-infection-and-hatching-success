@@ -17,8 +17,7 @@ What this repository contains:
 ## Data Availability
 
 - Raw 16S, ITS and TEF-1α sequences: 
-  NCBI SRA, BioProject [PRJNA######](https://www.ncbi.nlm.nih.gov/bioproject/)
-- Processed feature tables and metadata: `data/`
-- All paths in R scripts are **relative** to the repo root
+  NCBI SRA, BioProject PRJNPRJNA1199215
+- Metadata: Essentials/metadata
 
 ---
