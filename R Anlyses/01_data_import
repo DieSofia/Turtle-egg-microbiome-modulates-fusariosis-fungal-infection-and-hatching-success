@@ -1,0 +1,243 @@
+# =============================================================================
+# 01_data_import_qc.R
+# Project: Turtle egg microbiome modulates fusariosis fungal infection
+#          and hatching success
+# Author:  Ana Sofia Carranco
+
+#
+# PURPOSE: Import 16S and ITS phyloseq objects, remove contaminants with
+#          DECONTAM (prevalence method, threshold = 0.5), remove PCR blanks
+#          and low-read-depth samples, subset egg samples, compute and
+#          export alpha diversity tables.
+#
+# OUTPUT:
+#   outputs/Micro_EGG_class.rds      — cleaned 16S egg phyloseq object
+#   outputs/ITS_EGG_class.rds        — cleaned ITS egg phyloseq object
+#   outputs/tables/Micro_EGG_alfa.txt — 16S alpha diversity table
+#   outputs/tables/Fungi_EGG_alfa.txt — ITS alpha diversity table
+# =============================================================================
+
+source("R/00_setup.R")
+
+set.seed(42)   # ensures reproducibility for any stochastic DECONTAM steps
+
+# In this script are all the steps necessary to prepare the data for analysis.
+# I provide the clean RDA file for the bacteriome and mycobiome after filtering the data. If you wish to reproduce the data since the beginning, all the trimmed sequences are available in NCBI (see README file for further information)
+
+# =============================================================================
+# SECTION 1: 16S — Import, DECONTAM, cleaning
+# =============================================================================
+
+## 1.1 Assemble phyloseq object -----------------------------------------------
+
+Micro_class <- merge_phyloseq(Micro_map, Micro_biom, Micro_tree)
+
+## 1.2 Label negative controls ------------------------------------------------
+PCRControl <- factor(
+  sample_data(Micro_class)$SampleForm,
+  levels = c("Blank", "Egg", "Env", "PCRBLNK")
+)
+levels(PCRControl) <- c("Control", "Sample", "Sample", "Control")
+
+sample_data(Micro_class)$PCRControl <- PCRControl
+sample_data(Micro_class)$is.neg <- sample_data(Micro_class)$PCRControl == "Control"
+
+## 1.3 Identify contaminants (prevalence method) ------------------------------
+contamdf.prev05 <- isContaminant(
+  Micro_class,
+  method    = "prevalence",
+  neg       = "is.neg",
+  threshold = 0.5
+)
+# Diagnostic: prevalence in controls vs true samples
+Micro_class.pa     <- transform_sample_counts(Micro_class, function(abund) 1 * (abund > 0))
+Micro_class.pa.neg <- prune_samples(sample_data(Micro_class.pa)$PCRControl == "Control", Micro_class.pa)
+Micro_class.pa.pos <- prune_samples(sample_data(Micro_class.pa)$PCRControl == "Sample", Micro_class.pa)
+df.pa <- data.frame(
+  pa.pos      = taxa_sums(Micro_class.pa.pos),
+  pa.neg      = taxa_sums(Micro_class.pa.neg),
+  contaminant = contamdf.prev05$contaminant
+)
+
+## Prevalence diagnostic plot (saved to figures/ for reference)
+png("figures/16S_decontam_prevalence.png", width = 1800, height = 1400, res = 200)
+ggplot(data = df.pa, aes(x = pa.neg, y = pa.pos, color = contaminant)) +
+  geom_point() +
+  xlab("Prevalence (Negative Controls)") +
+  ylab("Prevalence (True Samples)") +
+  theme_linedraw()
+dev.off()
+
+## 1.4 Remove contaminants ----------------------------------------------------
+Micro_class <- prune_taxa(!contamdf.prev05$contaminant, Micro_class)
+
+## 1.5 Remove PCR blank samples -----------------------------------------------
+pcr_blanks_16S <- c(
+  "PCRBlank1", "PCRBlank2-358", "PCRBlank3", "PCRBLank4",
+  "PCRBLNK1",  "PCRBLNK2",     "PCRBLNK3",  "PCRBLNK4", "PCRBLNK5"
+)
+Micro_class <- subset_samples(Micro_class, !(Featureid %in% pcr_blanks_16S))
+
+
+# Rarefaction curves – 16S ------------------------------------- #
+
+rarefaction_16S_Eggs <- ranacapa::ggrare(Micro_EGG_nest, step = 200) +
+  ggtitle("Rarefaction curves per sample")
+
+prare16S <- rarefaction_16S_Eggs +
+  theme_classic(17) +
+  geom_vline(xintercept = 10000, linetype = "dashed", color = "red") +
+  ggtitle("(a) Rarefaction curves per sample – Bacteriome") +
+  coord_cartesian(xlim = c(0, 50000))
+
+
+## 1.6 Filter low-depth samples (< 10,000 reads) -------------------------------
+Micro_EGG_control_clean <- subset_samples(Micro_class, sample_sums(Micro_class) > 10000)
+
+
+## 1.7 Save cleaned 16S phyloseq object (I provided this file for further analyses) 
+
+saveRDS(Micro_EGG_control_clean, "outputs/Micro_EGG_control_clean.rds")
+
+## 1.8 Subset egg samples only for the analyses
+
+Micro_EGG_control_clean <- subset_samples(Micro_EGG_control_clean, SampleForm == "Egg")
+
+# =============================================================================
+# SECTION 2: ITS — Import, DECONTAM, Alpha diversity
+# =============================================================================
+
+## 2.1 Load ITS phyloseq object -----------------------------------------------
+# As for the bacteriome, I provide the clean RDS file here. If you wish to process the data from scratch, all the sequences are available in NCBI (see the README file) and follow the ITS pre-processing script.
+
+ITS_class <- readRDS("data/ITS/ITS_data.rds")
+
+## 2.2 Label negative controls ------------------------------------------------
+PCRControl <- factor(
+  sample_data(ITS_class)$SampleForm,
+  levels = c("Blank", "Egg", "Env", "PCRBLNK")
+)
+levels(PCRControl) <- c("Control", "Sample", "Sample", "Control")
+sample_data(ITS_class)$PCRControl <- PCRControl
+sample_data(ITS_class)$is.neg <- sample_data(ITS_class)$PCRControl == "Control"
+
+## 2.3 Identify contaminants --------------------------------------------------
+contamdf.prev05 <- isContaminant(
+  ITS_class,
+  method    = "prevalence",
+  neg       = "is.neg",
+  threshold = 0.5
+)
+ITS_class.pa     <- transform_sample_counts(ITS_class, function(abund) 1 * (abund > 0))
+ITS_class.pa.neg <- prune_samples(sample_data(ITS_class.pa)$PCRControl == "Control", ITS_class.pa)
+ITS_class.pa.pos <- prune_samples(sample_data(ITS_class.pa)$PCRControl == "Sample", ITS_class.pa)
+df.pa <- data.frame(
+  pa.pos      = taxa_sums(ITS_class.pa.pos),
+  pa.neg      = taxa_sums(ITS_class.pa.neg),
+  contaminant = contamdf.prev05$contaminant
+)
+
+## Prevalence diagnostic plot
+png("figures/ITS_decontam_prevalence.png", width = 1800, height = 1400, res = 200)
+ggplot(data = df.pa, aes(x = pa.neg, y = pa.pos, color = contaminant)) +
+  geom_point() +
+  xlab("Prevalence (Negative Controls)") +
+  ylab("Prevalence (True Samples)") +
+  theme_linedraw()
+dev.off()
+
+## 2.4 Remove contaminants ----------------------------------------------------
+ITS_class <- prune_taxa(!contamdf.prev05$contaminant, ITS_class)
+
+## 2.5 Remove PCR blank samples -----------------------------------------------
+pcr_blanks_ITS <- c(
+  "PCRBLANK1", "PCRBLANK2", "PCRBLANK4",
+  "PCRBLANK5", "PCRBLANK6", "PCRBLANK7", "PCRBLANK8"
+)
+ITS_class <- subset_samples(ITS_class, !(Featureid %in% pcr_blanks_ITS))
+
+# Rarefaction curves – ITS + combined plot with 16S rarefaction curves--------------------- #
+
+rarefaction_ITS_Eggs <- ranacapa::ggrare(ITS_EGG_env, step = 200) +
+  ggtitle("Rarefaction curves per sample")
+
+prareITS <- rarefaction_ITS_Eggs +
+  theme_classic(17) +
+  geom_vline(xintercept = 3500, linetype = "dashed", color = "red") +
+  ggtitle("(b) Rarefaction curves per sample – Mycobiome") +
+  coord_cartesian(xlim = c(0, 10000))
+
+# Combined 16S + ITS rarefaction plots
+rarecomb <- prare16S + prareITS + plot_layout(axis_titles = "collect")
+
+png("Figures/RarefactionCurveBoth.png", width = 4500, height = 3500, res = 300)
+rarecomb
+dev.off()
+
+svg("Figures/RarefactionCurveBoth.svg")
+rarecomb
+dev.off()
+
+## 2.6 Remove remaining non-sample rows and filter by read depth --------------
+ITS_class <- subset_samples(ITS_class, PCRControl == "Sample")
+Myco_EGG_control_clean <- subset_samples(ITS_class, sample_sums(ITS_class) > 3000)
+
+## 2.7 Save cleaned ITS phyloseq object ---------------------------------------
+saveRDS(Myco_EGG_control_clean, "outputs/ITS_EGG_class.rds")
+
+## 2.8 Subset egg samples only for the analyses
+Myco_EGG_control_clean <- subset_samples(Myco_EGG_control_clean, SampleForm == "Egg")
+
+
+# =============================================================================
+# SECTION 3: Alpha diversity — 16S (bacteriome)
+# =============================================================================
+
+## 3.1 Compute Shannon, Observed, Simpson --------------------------------------
+Micro_EGG_alpha      <- microbiome::alpha(Micro_EGG_control_clean, index = c("shannon", "observed", "simpson"))
+Micro_EGG_alpha_meta <- meta(Micro_EGG_control_clean)
+Micro_EGG_alpha_meta$Featureid2 <- rownames(Micro_EGG_alpha_meta)
+Micro_EGG_alpha$Featureid2      <- rownames(Micro_EGG_alpha)
+Micro_EGG_alfa <- merge(Micro_EGG_alpha_meta, Micro_EGG_alpha, by = "Featureid2")
+
+## 3.2 Phylogenetic diversity (Faith's PD) ------------------------------------
+Micro_control_ASVtab <- data.frame(Micro_EGG_control_clean@otu_table)
+Micro_control_tree   <- Micro_EGG_control_clean@phy_tree
+Micro_control_df     <- pd(t(Micro_control_ASVtab), Micro_control_tree, include.root = TRUE)
+Micro_EGG_alfa$Phylogenetic <- Micro_control_df$PD
+
+
+## 3.3 Export -----------------------------------------------------------------
+write.table(
+  Micro_EGG_alfa,
+  file      = "outputs/tables/Micro_EGG_alfa.txt",
+  sep       = "\t",
+  row.names = TRUE,
+  col.names = NA
+)
+saveRDS(Micro_EGG_alfa, "outputs/Micro_EGG_alfa.rds")
+
+# =============================================================================
+# SECTION 4: Alpha diversity — ITS (mycobiome)
+# =============================================================================
+
+## 4.1 Compute Shannon, Observed, Simpson --------------------------------------
+ITS_EGG_alpha      <- microbiome::alpha(Myco_EGG_control_clean, index = c("shannon", "observed", "simpson"))
+ITS_EGG_alpha_meta <- meta(Myco_EGG_control_clean)
+ITS_EGG_alpha_meta$Featureid2 <- rownames(ITS_EGG_alpha_meta)
+ITS_EGG_alpha$Featureid2      <- rownames(ITS_EGG_alpha)
+Fungi_EGG_alfa <- merge(ITS_EGG_alpha_meta, ITS_EGG_alpha, by = "Featureid2")
+
+## 4.2 Export -----------------------------------------------------------------
+write.table(
+  Fungi_EGG_alfa,
+  file      = "outputs/tables/Fungi_EGG_alfa.txt",
+  sep       = "\t",
+  row.names = TRUE,
+  col.names = NA
+)
+saveRDS(Fungi_EGG_alfa, "outputs/Fungi_EGG_alfa.rds")
+
+# =============================================================================
+sessionInfo()
+# =============================================================================
