@@ -1,0 +1,712 @@
+# =============================================================================
+# 02_alpha_diversity.R
+#
+# PURPOSE: Visualise and model alpha diversity (species richness, Shannon)
+#          of egg bacteriome (16S) and mycobiome (ITS) as a function of
+#          hatching stage and FSSC infection status.
+#
+# INPUT:
+#          Micro_EGG_alfa.rds 
+#          Fungi_EGG_alfa.rds  
+#
+# OUTPUT:
+#   figures/AlphaAllEggsFSSC.png — 2x2 panel figure (manuscript Fig. 1)
+# =============================================================================
+
+source("R/00_setup.R")
+
+set.seed(42)
+
+# =============================================================================
+# SECTION 1: Load data
+# =============================================================================
+
+Micro_EGG_alfa <- readRDS("Micro_EGG_alfa.rds")
+Fungi_EGG_alfa <- readRDS("Fungi_EGG_alfa.rds")
+
+# Axis label lookup (used in all plots)
+stage_labels <- c(
+  "UnhatchedEggED" = "Failed E.D.\negg",
+  "UnhatchedEggLD" = "Failed L.D.\negg",
+  "HatchedEgg"     = "Hatched\negg"
+)
+
+my_comparisons <- list(
+  c("UnhatchedEggLD", "UnhatchedEggED"),
+  c("HatchedEgg",     "UnhatchedEggED"),
+  c("HatchedEgg",     "UnhatchedEggLD")
+)
+
+# =============================================================================
+# SECTION 2: Species richness (Observed) — Bacteriome
+# =============================================================================
+
+## 2.1 Plot -------------------------------------------------------------------
+Micro3Egg <- ggplot(Micro_EGG_alfa, aes(x = Stage, y = observed)) +
+  geom_boxplot(outlier.shape = NA, aes(fill = FSSC2)) +
+  geom_jitter(colour = "black", position = position_dodge(0.75),
+              size = 1.5, aes(fill = FSSC2)) +
+  scale_x_discrete(labels = stage_labels) +
+  scale_fill_manual(labels = c("Uninfected", "Infected"), values = cojo) +
+  xlab(" ") +
+  ylab("Species Richness\nBacteriome") +
+  guides(
+    fill  = guide_legend(title = "Fusariosis", reverse = FALSE,
+                         keywith = 1, keyheight = 1),
+    shape = guide_legend(title = waiver(), reverse = TRUE,
+                         keywith = 1, keyheight = 1)
+  ) +
+  theme_linedraw() +
+  theme(
+    legend.title = element_text(size = 16),
+    legend.text  = element_text(size = 16),
+    strip.text.x = element_text(size = 16),
+    axis.text    = element_text(size = 14),
+    axis.title   = element_text(size = 16),
+    panel.grid.minor = element_line(linewidth = 0.05),
+    panel.grid.major = element_line(linewidth = 0.05)
+  )
+
+
+## 2.2 Model: Observed ~ Stage + FSSC2 (negative binomial) -------------------
+M1Inf_add  <- glm.nb(observed ~ Stage + FSSC2, data = Micro_EGG_alfa,
+                     na.action = na.fail)
+M1Inf_int  <- glm.nb(observed ~ Stage * FSSC2, data = Micro_EGG_alfa,
+                     na.action = na.fail)
+
+# Model selection
+AIC(M1Inf_add, M1Inf_int)
+anova(M1Inf_add, M1Inf_int)      # interaction not supported → use additive
+dredge(M1Inf_add, extra = "adjR^2")
+anova(M1Inf_add, test = "Chisq")
+
+# Post-hoc Tukey contrasts
+summary(glht(M1Inf_add, mcp(Stage = "Tukey")))
+summary(glht(M1Inf_add, mcp(FSSC2 = "Tukey")))
+
+
+## 2.3 Add significance brackets to plot -------------------------------------
+Micro3Egg <- Micro3Egg +
+  geom_signif(
+    stat = "identity",
+    data = data.frame(
+      x          = c(0.7, 1.7, 2.7),
+      xend       = c(1.3, 2.3, 3.3),
+      y          = c(260, 260, 260),
+      annotation = c("NS", "NS", "NS")
+    ),
+    aes(x = x, xend = xend, y = y, yend = y,
+        annotation = annotation, group = annotation)
+  ) +
+  geom_signif(
+    comparisons        = my_comparisons,
+    map_signif_level   = TRUE,
+    y_position         = c(280, 300, 320),
+    annotation         = c("*", "***", ".")
+  )
+
+
+# =============================================================================
+# SECTION 3: Species richness (Observed) — Mycobiome
+# =============================================================================
+
+## 3.1 Plot -------------------------------------------------------------------
+Fungi3Egg <- ggplot(Fungi_EGG_alfa, aes(x = Stage, y = observed)) +
+  geom_boxplot(outlier.shape = NA, aes(fill = FSSC2)) +
+  geom_jitter(colour = "black", position = position_dodge(0.75),
+              size = 1.5, aes(fill = FSSC2)) +
+  scale_x_discrete(labels = stage_labels) +
+  scale_fill_manual(labels = c("Uninfected", "Infected"), values = cojo) +
+  xlab(" ") +
+  ylab("Species Richness\nMycobiome") +
+  guides(
+    fill  = guide_legend(title = "Fusariosis", reverse = FALSE,
+                         keywith = 1, keyheight = 1),
+    shape = guide_legend(title = waiver(), reverse = TRUE,
+                         keywith = 1, keyheight = 1)
+  ) +
+  theme_linedraw() +
+  theme(
+    legend.title = element_text(size = 16),
+    legend.text  = element_text(size = 16),
+    strip.text.x = element_text(size = 16),
+    axis.text    = element_text(size = 14),
+    axis.title   = element_text(size = 16),
+    panel.grid.minor = element_line(linewidth = 0.05),
+    panel.grid.major = element_line(linewidth = 0.05)
+  )
+
+
+## 3.2 Model: Observed ~ FSSC2 + Stage (negative binomial) ------------------
+FM1Inf_add <- glm.nb(observed ~ FSSC2 + Stage, data = Fungi_EGG_alfa,
+                     na.action = na.fail)
+FM1Inf_int <- glm.nb(observed ~ FSSC2 * Stage, data = Fungi_EGG_alfa,
+                     na.action = na.fail)
+
+AIC(FM1Inf_add, FM1Inf_int)
+anova(FM1Inf_int)                # test interaction
+dredge(FM1Inf_add, extra = "adjR^2")
+anova(FM1Inf_add)
+
+summary(glht(FM1Inf_add, mcp(Stage = "Tukey")))
+summary(glht(FM1Inf_add, mcp(FSSC2 = "Tukey")))
+
+
+## 3.3 Add significance brackets ---------------------------------------------
+Fungi3Egg <- Fungi3Egg +
+  geom_signif(
+    stat = "identity",
+    data = data.frame(
+      x          = c(0.7, 1.7, 2.7),
+      xend       = c(1.3, 2.3, 3.3),
+      y          = c(41, 41, 41),
+      annotation = c("NS", "NS", "NS")
+    ),
+    aes(x = x, xend = xend, y = y, yend = y,
+        annotation = annotation, group = annotation)
+  ) +
+  geom_signif(
+    comparisons      = my_comparisons,
+    map_signif_level = TRUE,
+    y_position       = c(45, 51, 57),
+    annotation       = c("NS", "*", "*")
+  )
+
+# =============================================================================
+# SECTION 4: Shannon diversity — Bacteriome
+# =============================================================================
+
+## 4.1 Plot -------------------------------------------------------------------
+Micro4Egg <- ggplot(Micro_EGG_alfa, aes(x = Stage, y = diversity_shannon)) +
+  geom_boxplot(outlier.shape = NA, aes(fill = FSSC2)) +
+  geom_jitter(colour = "black", position = position_dodge(0.75),
+              size = 1.5, aes(fill = FSSC2)) +
+  scale_x_discrete(labels = stage_labels) +
+  scale_fill_manual(labels = c("Uninfected", "Infected"), values = cojo) +
+  xlab(" ") +
+  ylab("Shannon diversity\nBacteriome\n") +
+  guides(
+    fill  = guide_legend(title = "Fusariosis", reverse = FALSE,
+                         keywith = 1, keyheight = 1),
+    shape = guide_legend(title = waiver(), reverse = TRUE,
+                         keywith = 1, keyheight = 1)
+  ) +
+  theme_linedraw() +
+  theme(
+    legend.title = element_text(size = 16),
+    legend.text  = element_text(size = 16),
+    strip.text.x = element_text(size = 16),
+    axis.text    = element_text(size = 14),
+    axis.title   = element_text(size = 16),
+    panel.grid.minor = element_line(linewidth = 0.05),
+    panel.grid.major = element_line(linewidth = 0.05)
+  )
+
+## 4.3 Model: Shannon ~ Stage + FSSC2 (Gamma GLM) ----------------------------
+M1Inf_sh_add <- glm(diversity_shannon ~ Stage + FSSC2,
+                    data = Micro_EGG_alfa, na.action = na.fail,
+                    family = Gamma(identity))
+M2Inf_sh_int <- glm(diversity_shannon ~ Stage * FSSC2,
+                    data = Micro_EGG_alfa, na.action = na.fail,
+                    family = Gamma(identity))
+
+AIC(M1Inf_sh_add, M2Inf_sh_int)
+dredge(M1Inf_sh_add, extra = "adjR^2")
+anova(M1Inf_sh_add, test = "Chisq")
+
+summary(glht(M1Inf_sh_add, mcp(Stage = "Tukey")))
+summary(glht(M1Inf_sh_add, mcp(FSSC2 = "Tukey")))
+
+## 4.2 Add significance brackets ---------------------------------------------
+Micro4Egg <- Micro4Egg +
+  geom_signif(
+    stat = "identity",
+    data = data.frame(
+      x          = c(0.7, 1.7, 2.7),
+      xend       = c(1.3, 2.3, 3.3),
+      y          = c(4.2, 4.2, 4.2),
+      annotation = c("NS", "NS", "NS")
+    ),
+    aes(x = x, xend = xend, y = y, yend = y,
+        annotation = annotation, group = annotation)
+  ) +
+  geom_signif(
+    comparisons      = my_comparisons,
+    map_signif_level = TRUE,
+    y_position       = c(4.4, 4.8, 5.2),
+    annotation       = c(".", "***", "NS")
+  )
+
+
+# =============================================================================
+# SECTION 5: Shannon diversity — Mycobiome
+# =============================================================================
+
+## 5.1 Plot -------------------------------------------------------------------
+Fungi4Egg <- ggplot(Fungi_EGG_alfa, aes(x = Stage, y = diversity_shannon)) +
+  geom_boxplot(outlier.shape = NA, aes(fill = FSSC2)) +
+  geom_jitter(colour = "black", position = position_dodge(0.75),
+              size = 1.5, aes(fill = FSSC2)) +
+  scale_x_discrete(labels = stage_labels) +
+  scale_fill_manual(labels = c("Uninfected", "Infected"), values = cojo) +
+  xlab(" ") +
+  ylab("Shannon diversity\nMycobiome\n") +
+  guides(
+    fill  = guide_legend(title = "Fusariosis", reverse = FALSE,
+                         keywith = 1, keyheight = 1),
+    shape = guide_legend(title = waiver(), reverse = TRUE,
+                         keywith = 1, keyheight = 1)
+  ) +
+  theme_linedraw() +
+  theme(
+    legend.title = element_text(size = 16),
+    legend.text  = element_text(size = 16),
+    strip.text.x = element_text(size = 16),
+    axis.text    = element_text(size = 14),
+    axis.title   = element_text(size = 16),
+    panel.grid.minor = element_line(linewidth = 0.05),
+    panel.grid.major = element_line(linewidth = 0.05)
+  )
+
+## 5.2 Model: Shannon ~ Stage + FSSC2 (zero-inflated Gamma GLMM) -------------
+# Using glmmTMB because ITS Shannon contains structural zeros
+FM5Inf_sh_add <- glmmTMB(
+  diversity_shannon ~ Stage + FSSC2,
+  family     = ziGamma(link = "log"),
+  ziformula  = ~1,
+  data       = Fungi_EGG_alfa,
+  na.action  = na.fail
+)
+FM5Inf_sh_int <- glmmTMB(
+  diversity_shannon ~ Stage * FSSC2 + SeqDepth,
+  family     = ziGamma(link = "log"),
+  ziformula  = ~1,
+  data       = Fungi_EGG_alfa,
+  na.action  = na.fail
+)
+
+AIC(FM5Inf_sh_add, FM5Inf_sh_int)
+# Interaction term not supported; none of the variables improve on additive model
+dredge(FM5Inf_sh_add)
+summary(FM5Inf_sh_add)
+
+summary(glht(FM5Inf_sh_add, mcp(Stage = "Tukey")))
+summary(glht(FM5Inf_sh_add, mcp(FSSC2 = "Tukey")))
+
+
+## 5.3 Add significance brackets ---------------------------------------------
+Fungi4Egg <- Fungi4Egg +
+  geom_signif(
+    stat = "identity",
+    data = data.frame(
+      x          = c(0.7, 1.7, 2.7),
+      xend       = c(1.3, 2.3, 3.3),
+      y          = c(4.2, 4.2, 4.2),
+      annotation = c("NS", "NS", "NS")
+    ),
+    aes(x = x, xend = xend, y = y, yend = y,
+        annotation = annotation, group = annotation)
+  ) +
+  geom_signif(
+    comparisons      = my_comparisons,
+    map_signif_level = TRUE,
+    y_position       = c(4.4, 4.8, 5.2),
+    annotation       = c("NS", "NS", "NS")
+  )
+
+
+
+# =============================================================================
+# SECTION 6: Assemble 2x2 figure panel (Fig. 1)
+# =============================================================================
+
+legend_grob <- gtable_filter(ggplotGrob(Micro3Egg), "guide-box")
+
+png("figures/AlphaAllEggsFSSC.png", width = 3800, height = 3400, res = 300)
+
+pushViewport(viewport(layout = grid.layout(30, 36)))
+vplayout <- function(x, y) viewport(layout.pos.row = x, layout.pos.col = y)
+
+legend_grob$vp <- viewport(layout.pos.row = 13:17, layout.pos.col = 31:35)
+grid.draw(legend_grob)
+
+print(Micro3Egg + ggtitle("(a)") +
+        theme(legend.position = "none"),
+      vp = vplayout(1:15, 1:15))
+
+print(Micro4Egg + ggtitle("(b)") +
+        theme(legend.position = "none"),
+      vp = vplayout(1:15, 16:30))
+
+print(Fungi3Egg + ggtitle("(c)") +
+        theme(legend.position = "none"),
+      vp = vplayout(16:30, 1:15))
+
+print(Fungi4Egg + ggtitle("(d)") +
+        theme(legend.position = "none"),
+      vp = vplayout(16:30, 16:30))
+
+dev.off()
+
+
+# =============================================================================
+# SECTION 7: Alpha diversity statistics
+# =============================================================================
+
+# Load data
+Micro_EGG_control_clean <- readRDS("outputs/Micro_EGG_control_clean.rds")
+Myco_EGG_control_clean <- readRDS("outputs/Myco_EGG_control_clean.rds")
+
+
+# ---- 7.1  Attach sequencing depth to alpha table  ------- #
+
+SeqDepth <- as.data.frame(sample_sums(Micro_EGG_control_clean))
+SeqDepth <- setDT(SeqDepth, keep.rownames = TRUE)[]
+names(SeqDepth) <- c("Featureid", "SeqDepth")
+
+Micro_EGG_alfa <- merge(Micro_EGG_alfa, SeqDepth, by = "Featureid")
+
+head(Micro_EGG_alfa)
+names(Micro_EGG_alfa)
+
+
+# ---- 7.2  Response variable exploration --------------------------------- #
+
+hist(Micro_EGG_alfa$observed, breaks = 100)
+boxplot(Micro_EGG_alfa$observed ~ Micro_EGG_alfa$Stage)
+plot(Micro_EGG_alfa$observed ~ scale(Micro_EGG_alfa$SeqDepth))
+abline(lm(Micro_EGG_alfa$observed ~ scale(Micro_EGG_alfa$SeqDepth)))
+
+
+##############################################################################
+# 8: 16S – OBSERVED RICHNESS MODELS
+##############################################################################
+
+# ---- 8.1  Candidate models ---------------------------------------------- #
+
+# Additive (selected model for paper)
+M1Inf.4   <- glm.nb(observed ~ FSSC2 + Stage,
+                    data = Micro_EGG_alfa, na.action = na.fail) ##best model
+
+# Additive + SeqDepth covariate
+M1Inf.4.0 <- glm.nb(observed ~ FSSC2 + Stage + SeqDepth,
+                    data = Micro_EGG_alfa, na.action = na.fail)
+
+# Interaction model
+M1Inf.4.1 <- glm.nb(observed ~ FSSC2 * Stage,
+                    data = Micro_EGG_alfa, na.action = na.fail)
+
+
+# ---- Model comparison --------------------------------------------- #
+
+anova(M1Inf.4, M1Inf.4.1)
+AIC(M1Inf.4, M1Inf.4.0, M1Inf.4.1)
+
+
+# ---- Model diagnostics and selection (with SeqDepth) --------------- #
+
+dredge(M1Inf.4.0, extra = "adjR^2")
+
+
+##############################################################################
+# 9: 16S – SHANNON DIVERSITY MODELS
+##############################################################################
+
+# ---- 9.1  Candidate models ---------------------------------------------- #
+
+# Additive (selected model for paper)
+M1Inf_sh   <- glm(diversity_shannon ~ Stage + FSSC2,
+                  data = Micro_EGG_alfa, na.action = na.fail,
+                  family = Gamma(identity)) ##best
+
+# Additive + SeqDepth covariate 
+M1Inf_sh.0 <- glm(diversity_shannon ~ Stage + FSSC2 + SeqDepth,
+                  data = Micro_EGG_alfa, na.action = na.fail,
+                  family = Gamma)
+
+# Interaction model
+M2Inf_sh   <- glm(diversity_shannon ~ Stage * FSSC2,
+                  data = Micro_EGG_alfa, na.action = na.fail,
+                  family = Gamma(identity))
+
+
+# ----   Model comparison --------------------------------------------- #
+
+AIC(M1Inf_sh, M1Inf_sh.0, M2Inf_sh)
+
+
+# ----  Model selection (with SeqDepth) ------------------------------- #
+
+dredge(M1Inf_sh, extra = "adjR^2")
+
+dredge(M1Inf_sh.0, extra = "adjR^2")
+
+
+
+##############################################################################
+# 10. 16S – MODEL COMPARISON FRAMEWORK (B-series)
+##############################################################################
+# This framework is used in the paper to report effects of:
+# Stage (development) and FSSC2 (fusariosis infection) on alpha diversity.
+
+# ---- 10.1  Define all candidate models ----------------------------------- #
+
+# Interaction models
+B1_obs <- glm.nb(observed ~ FSSC2 * Stage,
+                 data = Micro_EGG_alfa, na.action = na.fail)
+B1_sh  <- glm(diversity_shannon ~ Stage * FSSC2,
+              data = Micro_EGG_alfa, na.action = na.fail,
+              family = Gamma(identity))
+
+# Additive models (both predictors)
+B2_obs <- glm.nb(observed ~ FSSC2 + Stage,
+                 data = Micro_EGG_alfa, na.action = na.fail)
+B2_sh  <- glm(diversity_shannon ~ FSSC2 + Stage,
+              data = Micro_EGG_alfa, na.action = na.fail,
+              family = Gamma(identity))
+
+# Stage only
+B3_obs <- glm.nb(observed ~ Stage,
+                 data = Micro_EGG_alfa, na.action = na.fail)
+B3_sh  <- glm(diversity_shannon ~ Stage,
+              data = Micro_EGG_alfa, na.action = na.fail,
+              family = Gamma(identity))
+
+# FSSC2 only
+B4_obs <- glm.nb(observed ~ FSSC2,
+                 data = Micro_EGG_alfa, na.action = na.fail)
+B4_sh  <- glm(diversity_shannon ~ FSSC2,
+              data = Micro_EGG_alfa, na.action = na.fail,
+              family = Gamma(identity))
+
+# SeqDepth + Stage (to report the effect of depth after accounting for development)
+DB2_obs <- glm.nb(observed ~ SeqDepth + Stage,
+                  data = Micro_EGG_alfa, na.action = na.fail)
+DB2_sh  <- glm(diversity_shannon ~ SeqDepth + Stage,
+               data = Micro_EGG_alfa, na.action = na.fail,
+               family = Gamma)
+
+# SeqDepth only
+DB4_obs <- glm.nb(observed ~ SeqDepth,
+                  data = Micro_EGG_alfa, na.action = na.fail)
+DB4_sh  <- glm(diversity_shannon ~ SeqDepth,
+               data = Micro_EGG_alfa, na.action = na.fail,
+               family = Gamma)
+
+
+# ---- 10.2  Compare interaction vs. additive ------------------------------ #
+
+anova(B1_obs, B2_obs);  MuMIn::AICc(B1_obs, B2_obs)
+anova(B1_sh,  B2_sh);   MuMIn::AICc(B1_sh,  B2_sh)
+
+
+# ---- 10.3  Effect of FSSC2 (infection): additive vs. Stage-only ---------- #
+
+anova(B2_obs, B3_obs);  MuMIn::AICc(B2_obs, B3_obs)
+anova(B2_sh,  B3_sh);   MuMIn::AICc(B2_sh,  B3_sh)
+
+
+# ---- 10.4  Effect of Stage (development): additive vs. FSSC2-only -------- #
+
+anova(B2_obs, B4_obs);  MuMIn::AICc(B2_obs, B4_obs)
+anova(B2_sh,  B4_sh, test = "F"); MuMIn::AICc(B2_sh, B4_sh)
+
+
+# ---- 10.5  Effect of FSSC2: interaction vs. Stage-only ------------------- #
+
+anova(B1_obs, B3_obs);  MuMIn::AICc(B1_obs, B3_obs)
+anova(B1_sh,  B3_sh);   MuMIn::AICc(B1_sh,  B3_sh)
+
+
+# ---- 10.6  Effect of SeqDepth after accounting for Stage ----------------- #
+
+anova(DB2_obs, DB4_obs);  MuMIn::AICc(DB2_obs, DB4_obs)
+anova(DB2_sh,  DB4_sh, test = "F"); MuMIn::AICc(DB2_sh, DB4_sh)
+
+
+##############################################################################
+# 11. ITS – PREPARE ALPHA DIVERSITY DATA FRAME
+##############################################################################
+
+# ---- 11.1  Attach sequencing depth to ITS alpha table --------------------- #
+
+SeqDepthFungi <- as.data.frame(sample_sums(Myco_EGG_control_clean))
+SeqDepthFungi <- setDT(SeqDepthFungi, keep.rownames = TRUE)[]
+names(SeqDepthFungi) <- c("Featureid2", "SeqDepthFungi")
+
+Fungi_EGG_alfa <- merge(Fungi_EGG_alfa, SeqDepthFungi, by = "Featureid2")
+
+head(Fungi_EGG_alfa)
+names(Fungi_EGG_alfa)
+
+
+# ---- 11.2  Response variable exploration --------------------------------- #
+
+hist(Fungi_EGG_alfa$observed, breaks = 100)
+boxplot(Fungi_EGG_alfa$observed ~ Fungi_EGG_alfa$Stage)
+plot(Fungi_EGG_alfa$observed ~ scale(Fungi_EGG_alfa$SeqDepthFungi))
+abline(lm(Fungi_EGG_alfa$observed ~ scale(Fungi_EGG_alfa$SeqDepthFungi)))
+
+##############################################################################
+# 12. ITS – OBSERVED RICHNESS MODELS
+##############################################################################
+
+# ---- 12.1  Candidate models ---------------------------------------------- #
+
+# Additive (selected model for paper)
+FM1Inf.4   <- glm.nb(observed ~ FSSC2 + Stage,
+                     data = Fungi_EGG_alfa, na.action = na.fail)
+
+# Interaction model
+FM1Inf.4.1 <- glm.nb(observed ~ FSSC2 * Stage,
+                     data = Fungi_EGG_alfa, na.action = na.fail)
+
+
+# ----  Model comparison --------------------------------------------- #
+
+AIC(FM1Inf.4, FM1Inf.4.1)
+
+
+anova(FM1Inf.4.1)
+
+
+# ----  Model selection ----------------------------------------------- #
+
+dredge(FM1Inf.4, extra = "adjR^2")
+
+
+
+##############################################################################
+# 13. ITS – SHANNON DIVERSITY MODELS
+##############################################################################
+
+# ---- 13.1  Zero-inflation check ------------------------------------------ #
+
+100 * sum(Fungi_EGG_alfa$diversity_shannon == 0) / nrow(Fungi_EGG_alfa)
+# ~11 % zeros -> zero-inflated Gamma model appropriate
+
+qqnorm(Fungi_EGG_alfa$diversity_shannon)
+hist(Fungi_EGG_alfa$diversity_shannon)
+
+
+# ----   Candidate models ---------------------------------------------- #
+
+# Zero-inflated Gamma, additive (selected model for paper)
+FM5Inf_sh <- glmmTMB(diversity_shannon ~ Stage + FSSC2,
+                     family     = ziGamma(link = "log"),
+                     ziformula  = ~ 1,
+                     data       = Fungi_EGG_alfa,
+                     na.action  = na.fail)
+
+# Zero-inflated Gamma, interaction
+FM6Inf_sh <- glmmTMB(diversity_shannon ~ Stage * FSSC2,
+                     family     = ziGamma(link = "log"),
+                     ziformula  = ~ 1,
+                     data       = Fungi_EGG_alfa,
+                     na.action  = na.fail)
+
+AIC(FM5Inf_sh, FM6Inf_sh)
+
+
+# ----   Model diagnostics -------------------------------------------- #
+
+R1 <- resid(FM5Inf_sh)
+F1 <- fitted(FM5Inf_sh)
+plot(R1 ~ F1)
+qqnorm(R1)
+
+summary(FM5Inf_sh)
+
+
+# ----   Model selection ----------------------------------------------- #
+
+dredge(FM5Inf_sh)
+
+
+##############################################################################
+# 14. ITS – MODEL COMPARISON FRAMEWORK (F-series)
+##############################################################################
+
+# ---- 14.1  Define all candidate models ----------------------------------- #
+
+# Interaction models
+F1_obs <- glm.nb(observed ~ FSSC2 * Stage,
+                 data = Fungi_EGG_alfa, na.action = na.fail)
+F1_sh  <- glmmTMB(diversity_shannon ~ Stage * FSSC2,
+                  family = ziGamma(link = "log"), ziformula = ~ 1,
+                  data = Fungi_EGG_alfa, na.action = na.fail)
+
+# Additive models (both predictors)
+F2_obs <- glm.nb(observed ~ FSSC2 + Stage,
+                 data = Fungi_EGG_alfa, na.action = na.fail)
+F2_sh  <- glmmTMB(diversity_shannon ~ FSSC2 + Stage,
+                  family = ziGamma(link = "log"), ziformula = ~ 1,
+                  data = Fungi_EGG_alfa, na.action = na.fail)
+
+# Stage only
+F3_obs <- glm.nb(observed ~ Stage,
+                 data = Fungi_EGG_alfa, na.action = na.fail)
+F3_sh  <- glmmTMB(diversity_shannon ~ Stage,
+                  family = ziGamma(link = "log"), ziformula = ~ 1,
+                  data = Fungi_EGG_alfa, na.action = na.fail)
+
+# FSSC2 only
+F4_obs <- glm.nb(observed ~ FSSC2,
+                 data = Fungi_EGG_alfa, na.action = na.fail)
+F4_sh  <- glmmTMB(diversity_shannon ~ FSSC2,
+                  family = ziGamma(link = "log"), ziformula = ~ 1,
+                  data = Fungi_EGG_alfa, na.action = na.fail)
+
+# SeqDepth + Stage (to report the effect of depth after accounting for development)
+DF2_obs <- glm.nb(observed ~ Stage + SeqDepthFungi,
+                  data = Fungi_EGG_alfa, na.action = na.fail)
+DF2_sh  <- glmmTMB(diversity_shannon ~ SeqDepthFungi + Stage,
+                   family = ziGamma(link = "log"), ziformula = ~ 1,
+                   data = Fungi_EGG_alfa, na.action = na.fail)
+
+# SeqDepth only
+DF4_obs <- glm.nb(observed ~ SeqDepthFungi,
+                  data = Fungi_EGG_alfa, na.action = na.fail)
+DF4_sh  <- glmmTMB(diversity_shannon ~ SeqDepthFungi,
+                   family = ziGamma(link = "log"), ziformula = ~ 1,
+                   data = Fungi_EGG_alfa, na.action = na.fail)
+
+
+# ---- 14.2  Compare interaction vs. additive ------------------------------ #
+
+anova(F1_obs, F2_obs);  MuMIn::AICc(F1_obs, F2_obs)
+anova(F1_sh,  F2_sh);   MuMIn::AICc(F1_sh,  F2_sh)
+
+
+# ---- 14.3  Effect of FSSC2 (infection): additive vs. Stage-only ---------- #
+
+anova(F2_obs, F3_obs);  MuMIn::AICc(F2_obs, F3_obs)
+anova(F2_sh,  F3_sh);   MuMIn::AICc(F2_sh,  F3_sh)
+
+
+# ---- 14.4  Effect of Stage (development): additive vs. FSSC2-only -------- #
+
+anova(F2_obs, F4_obs);  MuMIn::AICc(F2_obs, F4_obs)
+anova(F2_sh,  F4_sh);   MuMIn::AICc(F2_sh,  F4_sh)
+
+
+# ---- 14.5  Effect of FSSC2: interaction vs. Stage-only ------------------- #
+
+anova(F1_obs, F3_obs);  MuMIn::AICc(F1_obs, F3_obs)
+anova(F1_sh,  F3_sh);   MuMIn::AICc(F1_sh,  F3_sh)
+
+
+# ---- 14.6  Effect of SeqDepth after accounting for Stage ----------------- #
+
+anova(DF2_obs, DF4_obs);  MuMIn::AICc(DF2_obs, DF4_obs)
+anova(DF2_sh,  DF4_sh);   MuMIn::AICc(DF2_sh,  DF4_sh)
+
+
+# ---- 8.7  dredge with SeqDepthFungi (ITS model selection table) --------- #
+
+dredge(DF2_obs, extra = "adjR^2")
+
+
+# =============================================================================
+sessionInfo()
+# =============================================================================
