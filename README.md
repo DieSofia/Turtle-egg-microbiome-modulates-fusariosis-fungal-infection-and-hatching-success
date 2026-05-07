@@ -7,22 +7,10 @@ In this repo, you will find the code used for this manuscript. All the codes wer
 For questions and requests, please contact me at ana.carranco-narvaez@uni-ulm.de or anasoficarranco@gmail.com
 
 What this repository contains: 
-1. **Essentials** — all files needed to run analyses
+1. **Essentials** — all files needed to run analyses (RDA objects and ANCOM main code)
 2. **QIIME2 pipeline** — raw amplicon processing (16S, ITS, TEF-1α)
 3. **R analyses** — diversity, differential abundance,
    functional inference, and network analysis
-
-
-
-## Repository Overview
-
-This repository contains all bioinformatics scripts and metadata 
-to reproduce the analyses in Carranco et al. (2026). 
-
-1. **QIIME2 scripts** — amplicon processing (16S, ITS, TEF-1α)
-2. **R analyses** — diversity, differential abundance, 
-    functional inference, and network analysis
-3. **RDA objects** - 16S and ITS objects after pre-processing
 
 ---
 
