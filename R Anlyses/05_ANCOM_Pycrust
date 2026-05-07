@@ -1,0 +1,1886 @@
+# ==============================================================================
+# ANCOM & PICRUSt2 ANALYSES
+# ==============================================================================
+
+source("R/00_setup.R")
+source("ANCOM_updated_code.R")
+# ==============================================================================
+# SECTION 1 — ANCOM 16S (BACTERIOME)
+# ==============================================================================
+
+##################### ANCOM ########################
+############## UNHATCHED AND HATCHED EGGS #############
+#######################################################
+
+
+######## CONTROLLING FOR FSSC+STAGE
+
+# Load data
+Micro_EGG_control_clean <- readRDS("outputs/Micro_EGG_control_clean.rds")
+
+
+factor(sample_data(Micro_EGG_control_clean)$Stage)
+
+Stage2 <- factor(sample_data(Micro_EGG_control_clean)$Stage, levels=c("UnhatchedEggED","UnhatchedEggLD", "HatchedEgg"), labels=c("UnhatchedEgg", "UnhatchedEgg", "HatchedEgg"))
+
+sample_data(Micro_EGG_control_clean)$Stage2 <- Stage2
+
+factor(sample_data(Micro_EGG_control_clean)$Stage2)
+
+
+MicroUnHatch <- Micro_EGG_control_clean%>%phyloseq::tax_glom(taxrank = "Genus")
+
+MicroUnHatch
+
+
+phylo_T <- t(abundances(MicroUnHatch))#OTU table where row=sample; column =ASV
+phylo_B <- bind_cols(data.frame(Sample.ID = rownames(phylo_T)), data.frame(phylo_T)) #### Adding Sample.ID as a vector
+
+str(phylo_T)
+str(phylo_B)
+head(phylo_B)
+names(phylo_B)
+
+
+phylo_met <- meta(MicroUnHatch)
+str(phylo_met$Stage2)
+
+names(phylo_B)
+names(phylo_met)
+
+
+colnames(phylo_met)[which(names(phylo_met) == "X.SampleID")] <- "Sample.ID"
+
+names(phylo_B)
+names(phylo_met)
+
+str(table)
+
+Tax <- data.frame(tax_table(MicroUnHatch))
+Tax <- bind_cols(data.frame(ASV = rownames(Tax)), data.frame(Tax))
+factor(Tax$ASV)
+ASV <- ifelse(substring(Tax$ASV, 1, 1) %in% c(0:9), paste0("X", Tax$ASV), paste(Tax$ASV))
+Tax$ASV <- ASV
+
+Tax
+
+phylo_met$Stage2
+phylo_met$FSSC2
+
+
+names(phylo_B)
+names(phylo_met)
+
+head(phylo_B$Sample.ID)
+head(phylo_met)
+
+phylo_met$Sample.ID <- phylo_met$Featureid
+
+phylo_met$Sample.ID==phylo_B$Sample.ID
+
+
+system.time({comparison_test_MicroUnHatch <- ANCOM.main(OTUdat=phylo_B, #OTU table
+  Vardat=phylo_met, #metadata file
+  adjusted=FALSE, # yes to include covariates
+  repeated=FALSE, # No repeated measurements
+  main.var="Stage2",
+  adj.formula="Stage2+FSSC2", # control for infection
+  longitudinal = FALSE, # No longitudinal data
+  random.formula=NULL, #follows the nlme syntax; isn't taken into consideration unless you have longitudinal data!!!
+  repeat.var=NULL, # No repeated measurements
+  multcorr=2, #1 is conservative, 2 is moderate and 3 is no correction
+  sig=0.05, #significance level
+  prev.cut=1) # OTUs with proportion of zeroes greater than prev.cut are not included in the analysis, so here we will not exclude any OTUs
+})
+
+head(comparison_test_MicroUnHatch$W.taxa, 35)
+
+Table_MicroUnHatch <- comparison_test_MicroUnHatch$W.taxa[which(comparison_test_MicroUnHatch$W.taxa$detected_0.6=="TRUE"), ]
+Table_MicroUnHatch
+
+
+colnames(Table_MicroUnHatch)[1] <- "ASV"
+
+Table_MicroUnHatch <- merge(Table_MicroUnHatch, Tax, by="ASV")
+Table_MicroUnHatch
+
+
+names(phylo_B)
+
+#remove the sample ID column, which is the first column
+phylo_B_trimmed <- phylo_B[-1]
+
+names(phylo_B_trimmed)
+
+# add +1 to all values in the dataframe, since that is what ANCOM does as well
+
+phylo_B_1 <- phylo_B_trimmed + 1
+
+
+#define the clr function
+phylo_comp <- microbiome::transform(phylo_B_1, trans="rclr")
+
+
+# add the landscape column again (since we didn't change the order of the data frame)
+phylo_comp$Stage2 <- phylo_met$Stage2
+phylo_comp$FSSC2 <- phylo_met$FSSC2
+
+phylo_comp
+
+head(phylo_comp)
+
+
+write.table(phylo_comp, "Tables/clrValues_Micro_UnhatchAll_Hatch-Egg.txt")
+
+
+n_otu=dim(phylo_comp)[2]-2
+otu_ids=colnames(phylo_comp)
+#define the vector to store the value in
+
+
+fValues <- vector(mode="double", length=n_otu)
+pValues <- vector(mode="double", length=n_otu)
+est_MicroUnHatch <- vector(mode="double", length=n_otu)
+se_MicroUnHatch <- vector(mode="double", length=n_otu)
+confintLower_MicroUnHatch <- vector(mode="double", length=n_otu)
+confintUpper_MicroUnHatch <- vector(mode="double", length=n_otu)
+
+
+#run the anova on each OTU
+for(ii in 1:(n_otu)){
+  #define the summary anova function:
+  command <- paste("fValTest <- summary(aov( formula=", otu_ids[ii], " ~ Stage2 + FSSC2, data = phylo_comp))")
+  #call the summary anova function
+  eval(parse(text=command))
+  #extract the f values from the anova and store it in the vector
+  fValues[ii] <- fValTest[[1]]$F[1]
+  #define the anova function:
+  pValues[ii] <- fValTest[[1]]$P[1]
+  command2 <- paste("parameters.se <- aov( formula=", otu_ids[ii], " ~ Stage2 + FSSC2, data = phylo_comp)")
+  #call the anova function
+  eval(parse(text=command2))
+  #extract the parameter estimates and standard errors from the anova and store it in the vector
+  est_MicroUnHatch[ii] <- coef(summary.lm(parameters.se))[2]
+  se_MicroUnHatch[ii] <- coef(summary.lm(parameters.se))[4]
+  confintLower_MicroUnHatch[ii] <- confint(parameters.se)[2]
+  confintUpper_MicroUnHatch[ii] <- confint(parameters.se)[5]
+}
+
+
+# #extract the parameter estimates and standard errors from the anova and store it in the vector
+coef(summary.lm(parameters.se2))
+coef(summary.lm(parameters.se2))[2]
+coef(summary.lm(parameters.se2))[5]
+confint(parameters.se2)[2]
+confint(parameters.se2)[5]#
+
+
+#create a dataframe with the F values and the corresponding OTU IDs
+fValue_dataframe_MicroUnHatch <- data.frame(
+otu.names = otu_ids[1:n_otu],
+fVals = fValues,
+pVals = pValues,
+estimates = est_MicroUnHatch,
+SE = se_MicroUnHatch,
+CIlower=confintLower_MicroUnHatch,
+CIupper=confintUpper_MicroUnHatch
+)
+
+fValue_dataframe_MicroUnHatch
+
+
+volcano_df_MicroUnHatch <- merge(fValue_dataframe_MicroUnHatch, comparison_test_MicroUnHatch$W, by = "otu.names")
+volcano_df_MicroUnHatch
+
+volcano_df_MicroUnHatch$otu.names <- as.character(volcano_df_MicroUnHatch$otu.names)
+
+volcano_df_MicroUnHatch$otu.names <- gsub('X', '', volcano_df_MicroUnHatch$otu.names)
+
+str(volcano_df_MicroUnHatch$otu.names)
+str(volcano_df_MicroUnHatch$otu.names)
+nrow(volcano_df_MicroUnHatch)
+
+
+names(Tax)
+
+Tax$otu.names <- Tax$ASV
+
+Tax$otu.names <- gsub('X', '', Tax$otu.names)
+
+volcano_df_MicroUnHatch <- merge(volcano_df_MicroUnHatch, Tax, by="otu.names")
+
+class(volcano_df_MicroUnHatch)
+head(volcano_df_MicroUnHatch)
+
+write.table(volcano_df_MicroUnHatch, "Tables/Ancom_Micro_Unhatch_Hatch.txt")
+
+
+volcano_df_MicroUnHatch$St <- "Un-HatchedEgg"
+
+volcano_df_MicroUnHatch
+
+
+########## ANCOM EMBRYO EGGS AND HATCHED EGGS #########
+
+#install.packages("rstatix")
+library(rstatix)
+
+head(volcano_df_MicroUnHatch)
+
+
+p_format <- p_format(volcano_df_MicroUnHatch, pVals, new.col= TRUE, digits= 1, accuracy = 1e-03, decimal.mark = ".",
+leading.zero = TRUE,
+trailing.zero = FALSE,
+add.p = FALSE,
+space = FALSE, )
+
+head(p_format)
+
+
+p_format <- p_mark_significant(
+p_format, pVals.format,
+new.col = FALSE,
+cutpoints = c(0, 1e-04, 0.001, 0.01, 0.05, 1),
+symbols = c("****", "***", "**", "*", "")
+)
+
+
+volcano_df_MicroUnHatch <- merge(volcano_df_MicroUnHatch, p_format)
+
+
+###### Lowest possible taxonomic level ######
+
+volcano_df_MicroUnHatch$TaxaLabel <- ifelse(grepl("uncultured", volcano_df_MicroUnHatch$Genus), paste0("Family_", volcano_df_MicroUnHatch$Family), ifelse(grepl("uncultured", volcano_df_MicroUnHatch$Species), paste0("Genus_", volcano_df_MicroUnHatch$Genus), ifelse(grepl("Ambiguous_taxa", volcano_df_MicroUnHatch$Species), paste0("Genus_", volcano_df_MicroUnHatch$Genus), ifelse(grepl("uncultured bacterium", volcano_df_MicroUnHatch$Species), paste0("Genus_", volcano_df_MicroUnHatch$Genus), ifelse(grepl("NA", volcano_df_MicroUnHatch$Class), paste0("Phylum_", volcano_df_MicroUnHatch$Phylum), ifelse(grepl("NA", volcano_df_MicroUnHatch$Order), paste0("Class_", volcano_df_MicroUnHatch$Class), ifelse(grepl("NA", volcano_df_MicroUnHatch$Family), paste0("Order_", volcano_df_MicroUnHatch$Order), ifelse(grepl("NA", volcano_df_MicroUnHatch$Genus), paste0("Family_", volcano_df_MicroUnHatch$Family), ifelse(grepl("NA", volcano_df_MicroUnHatch$Species), paste0("Genus_", volcano_df_MicroUnHatch$Genus), paste0(volcano_df_MicroUnHatch$Genus))))))))))
+
+
+volcano_df_MicroUnHatch$TaxaLabel
+
+
+Micro_Wclr_MicroUnHatch2 <- ggplot(volcano_df_MicroUnHatch, aes(y=W_stat, x=estimates, col=Phylum))+geom_point(size=rel(2.5))+scale_colour_manual(values= ana_col_alot)+ theme_linedraw(18) +geom_text_repel(data=volcano_df_MicroUnHatch[which(volcano_df_MicroUnHatch$detected_0.95==TRUE & volcano_df_MicroUnHatch$pVals<0.05& volcano_df_MicroUnHatch$estimates>2.5), ], aes(y=W_stat, x=estimates, label= paste(TaxaLabel, "\n(", pVals.format, ")", sep="")), size=rel(6), nudge_x =0.6, nudge_y = -30, force=200, segment.size =0.5, parse=FALSE, max.overlaps = Inf, show.legend = FALSE)+xlab(substitute(paste("Differential logs (clr)")))+ylab(substitute(paste(italic("W"), "statistic from ANCOM 16S")))+geom_vline(xintercept=0, linetype="dotted")+geom_hline(yintercept=605, linetype="dotted", color= "grey")+scale_x_continuous(expand = expansion(mult = 0.5))+ scale_y_continuous(expand = c(0, 0), limits = c(-1, length(volcano_df_MicroUnHatch$W_stat)), position="left", sec.axis = sec_axis(~ . / length(volcano_df_MicroUnHatch$W_stat), breaks=seq(0, 0.9, 0.1), name=substitute(paste(italic("W "), "threshold"))))+theme(axis.title=element_text(size = 12))+theme(title=element_text(size = 11))
+
+
+Micro_Wclr_MicroUnHatch2
+
+
+
+######## ANCOM INFECTION AND CONTROLLING FOR STAGE+FSSC
+
+MicroUnHatch
+
+phylo_T <- t(abundances(MicroUnHatch))#OTU table where row=sample; column =ASV
+phylo_B <- bind_cols(data.frame(Sample.ID = rownames(phylo_T)), data.frame(phylo_T)) #### Adding Sample.ID as a vector
+
+str(phylo_T)
+str(phylo_B)
+head(phylo_B)
+names(phylo_B)
+
+phylo_met <- meta(MicroUnHatch)
+str(phylo_met$Stage2)
+
+names(phylo_B)
+names(phylo_met)
+
+
+colnames(phylo_met)[which(names(phylo_met) == "X.SampleID")] <- "Sample.ID"
+
+names(phylo_B)
+names(phylo_met)
+
+str(table)
+
+Tax <- data.frame(tax_table(MicroUnHatch))
+Tax <- bind_cols(data.frame(ASV = rownames(Tax)), data.frame(Tax))
+factor(Tax$ASV)
+ASV <- ifelse(substring(Tax$ASV, 1, 1) %in% c(0:9), paste0("X", Tax$ASV), paste(Tax$ASV))
+Tax$ASV <- ASV
+
+Tax
+
+phylo_met$Stage2
+phylo_met$FSSC2
+
+
+names(phylo_B)
+names(phylo_met)
+
+head(phylo_B$Sample.ID)
+head(phylo_met)
+
+phylo_met$Sample.ID <- phylo_met$Featureid
+
+phylo_met$Sample.ID==phylo_B$Sample.ID
+
+
+system.time({comparison_test_MicroInf <- ANCOM.main(OTUdat=phylo_B, #OTU table
+  Vardat=phylo_met, #metadata file
+  adjusted=FALSE, # yes to include covariates
+  repeated=FALSE, # No repeated measurements
+  main.var="FSSC2",
+  adj.formula="Stage2+FSSC2", ## control for development
+  longitudinal = FALSE, # No longitudinal data
+  random.formula=NULL, #follows the nlme syntax; isn't taken into consideration unless you have longitudinal data!!!
+  repeat.var=NULL, # No repeated measurements
+  multcorr=2, #1 is conservative, 2 is moderate and 3 is no correction
+  sig=0.05, #significance level
+  prev.cut=1) # OTUs with proportion of zeroes greater than prev.cut are not included in the analysis, so here we will not exclude any OTUs
+})
+
+head(comparison_test_MicroInf$W.taxa, 15)
+
+Table_MicroInf <- comparison_test_MicroInf$W.taxa[which(comparison_test_MicroInf$W.taxa$detected_0.6=="TRUE"), ]
+Table_MicroInf
+
+
+colnames(Table_MicroInf)[1] <- "ASV"
+
+Table_MicroInf <- merge(Table_MicroInf, Tax, by="ASV")
+Table_MicroInf
+
+names(phylo_B)
+
+#remove the sample ID column, which is the first column
+phylo_B_trimmed <- phylo_B[-1]
+
+names(phylo_B_trimmed)
+
+# add +1 to all values in the dataframe, since that is what ANCOM does as well
+
+phylo_B_1 <- phylo_B_trimmed + 1
+
+
+#define the clr function
+phylo_comp <- microbiome::transform(phylo_B_1, trans="rclr")
+
+
+# add the landscape column again (since we didn't change the order of the data frame)
+phylo_comp$FSSC2 <- phylo_met$FSSC2
+phylo_comp$Stage2 <- phylo_met$Stage2
+
+phylo_comp
+
+head(phylo_comp)
+
+
+write.table(phylo_comp, "Tables/clrValues_MicroInf.txt")
+
+n_otu=dim(phylo_comp)[2]-2
+otu_ids=colnames(phylo_comp)
+#define the vector to store the value in
+
+
+fValues <- vector(mode="double", length=n_otu)
+pValues <- vector(mode="double", length=n_otu)
+est_MicroInf <- vector(mode="double", length=n_otu)
+se_MicroInf <- vector(mode="double", length=n_otu)
+confintLower_MicroInf <- vector(mode="double", length=n_otu)
+confintUpper_MicroInf <- vector(mode="double", length=n_otu)
+
+
+#run the anova on each OTU
+for(ii in 1:(n_otu)){
+  #define the summary anova function:
+  command <- paste("fValTest <- summary(aov( formula=", otu_ids[ii], " ~ FSSC2 + Stage2, data = phylo_comp))")
+  #call the summary anova function
+  eval(parse(text=command))
+  #extract the f values from the anova and store it in the vector
+  fValues[ii] <- fValTest[[1]]$F[1]
+  #define the anova function:
+  pValues[ii] <- fValTest[[1]]$P[1]
+  command2 <- paste("parameters.se <- aov( formula=", otu_ids[ii], " ~ FSSC2 + Stage2, data = phylo_comp)")
+  #call the anova function
+  eval(parse(text=command2))
+  #extract the parameter estimates and standard errors from the anova and store it in the vector
+  est_MicroInf[ii] <- coef(summary.lm(parameters.se))[2]
+  se_MicroInf[ii] <- coef(summary.lm(parameters.se))[5]
+  confintLower_MicroInf[ii] <- confint(parameters.se)[2]
+  confintUpper_MicroInf[ii] <- confint(parameters.se)[5]
+}
+
+#create a dataframe with the F values and the corresponding OTU IDs
+fValue_dataframe_MicroInf <- data.frame(
+otu.names = otu_ids[1:n_otu],
+fVals = fValues,
+pVals = pValues,
+estimates = est_MicroInf,
+SE = se_MicroInf,
+CIlower=confintLower_MicroInf,
+CIupper=confintUpper_MicroInf
+)
+
+head(fValue_dataframe_MicroInf)
+
+
+volcano_df_MicroInf <- merge(fValue_dataframe_MicroInf, comparison_test_MicroInf$W, by = "otu.names")
+volcano_df_MicroInf
+head(volcano_df_MicroInf)
+
+volcano_df_MicroInf[which(volcano_df_MicroInf$pVals<0.05 & !volcano_df_MicroInf$W_stat == 0), ]
+
+volcano_df_MicroInf$otu.names <- as.character(volcano_df_MicroInf$otu.names)
+
+volcano_df_MicroInf$otu.names <- gsub('X', '', volcano_df_MicroInf$otu.names)
+
+str(volcano_df_MicroInf$otu.names)
+str(volcano_df_MicroInf$otu.names)
+nrow(volcano_df_MicroInf)
+
+
+names(Tax)
+
+Tax$otu.names <- Tax$ASV
+
+Tax$otu.names <- gsub('X', '', Tax$otu.names)
+
+volcano_df_MicroInf <- merge(volcano_df_MicroInf, Tax, by="otu.names")
+
+class(volcano_df_MicroInf)
+head(volcano_df_MicroInf)
+
+write.table(volcano_df_MicroInf, "Tables/Ancom_MicroInf.txt")
+
+volcano_df_MicroInf$St <- "Un-Hatch-FSSCinf"
+
+volcano_df_MicroInf
+
+
+########## ANCOM EMBRYO EGGS AND HATCHED EGGS #########
+
+head(volcano_df_MicroInf)
+
+p_format <- p_format(volcano_df_MicroInf, pVals, new.col= TRUE, digits= 1, accuracy = 1e-03, decimal.mark = ".",
+leading.zero = TRUE,
+trailing.zero = FALSE,
+add.p = FALSE,
+space = FALSE, )
+
+head(p_format)
+
+
+p_format <- p_mark_significant(
+p_format, pVals.format,
+new.col = FALSE,
+cutpoints = c(0, 1e-04, 0.001, 0.01, 0.05, 1),
+symbols = c("****", "***", "**", "*", "")
+)
+
+volcano_df_MicroInf <- merge(volcano_df_MicroInf, p_format)
+
+###### Lowest possible taxonomic level ######
+
+volcano_df_MicroInf$TaxaLabel <- ifelse(grepl("uncultured", volcano_df_MicroInf$Genus), paste0("Family_", volcano_df_MicroInf$Family), ifelse(grepl("uncultured", volcano_df_MicroInf$Species), paste0("Genus_", volcano_df_MicroInf$Genus), ifelse(grepl("Ambiguous_taxa", volcano_df_MicroInf$Species), paste0("Genus_", volcano_df_MicroInf$Genus), ifelse(grepl("uncultured bacterium", volcano_df_MicroInf$Species), paste0("Genus_", volcano_df_MicroInf$Genus), ifelse(grepl("NA", volcano_df_MicroInf$Class), paste0("Phylum_", volcano_df_MicroInf$Phylum), ifelse(grepl("NA", volcano_df_MicroInf$Order), paste0("Class_", volcano_df_MicroInf$Class), ifelse(grepl("NA", volcano_df_MicroInf$Family), paste0("Order_", volcano_df_MicroInf$Order), ifelse(grepl("NA", volcano_df_MicroInf$Genus), paste0("Family_", volcano_df_MicroInf$Family), ifelse(grepl("NA", volcano_df_MicroInf$Species), paste0("Genus_", volcano_df_MicroInf$Genus), paste0(volcano_df_MicroInf$Genus))))))))))
+
+
+volcano_df_MicroInf$TaxaLabel
+
+head(volcano_df_MicroInf, 50)
+
+Micro_Wclr_MicroInf <- ggplot(volcano_df_MicroInf, aes(y=W_stat, x=estimates, col=Phylum))+geom_point(size=rel(2.5))+scale_colour_manual(values= ana_col_alot)+theme_linedraw(18)+geom_text_repel(data=volcano_df_MicroInf[which(volcano_df_MicroInf$detected_0.7==TRUE & volcano_df_MicroInf$pVals<0.05), ], aes(y=W_stat, x=estimates, label= paste(TaxaLabel, "\n(", pVals.format, ")", sep="")), size=rel(6), nudge_x =0.5, nudge_y = -0.7, force=2, segment.size =0.2, parse=FALSE, max.overlaps = Inf, show.legend = FALSE)+xlab(substitute(paste("Differential logs (clr)")))+ylab(substitute(paste(italic("W "), "statistic from ANCOM 16S")))+geom_vline(xintercept=0, linetype="dotted")+geom_hline(yintercept=605, linetype="dotted", color= "grey")+scale_x_continuous(expand = expansion(mult = 0.5))+ scale_y_continuous(expand = c(0, 0), limits = c(-1, length(volcano_df_MicroInf$W_stat)), position="left", sec.axis = sec_axis(~ . / length(volcano_df_MicroInf$W_stat), breaks=seq(0, 0.9, 0.1), name=substitute(paste(italic("W "), "threshold"))))+theme(axis.title=element_text(size = 12))+theme(title=element_text(size = 11))
+
+
+Micro_Wclr_MicroInf
+
+
+
+==============================================================================
+# SECTION 2 — ANCOM ITS (MYCOBIOME)
+# ==============================================================================
+###########################################################
+################## ANCOM ITS EGG SAMPLES #################
+###########################################################
+
+
+
+
+###################################################################################################################################### ANCOM ########################
+############## UNHATCHED AND HATCHED EGGS #############
+#######################################################
+
+######## CONTROLLING FOR FSSC+STAGE
+
+# Load data
+Myco_EGG_control_clean <- readRDS("outputs/Myco_EGG_control_clean.rds")
+
+factor(sample_data(Myco_EGG_control_clean)$Stage)
+
+Stage2 <- factor(sample_data(Myco_EGG_control_clean)$Stage, levels=c("UnhatchedEggED","UnhatchedEggLD", "HatchedEgg"), labels=c("UnhatchedEgg", "UnhatchedEgg", "HatchedEgg"))
+
+sample_data(Myco_EGG_control_clean)$Stage2 <- Stage2
+
+factor(sample_data(Myco_EGG_control_clean)$Stage2)
+
+FungiUnHaEgg <- Myco_EGG_control_clean%>%phyloseq::tax_glom(taxrank = "Genus")
+
+
+phylo_T <- t(abundances(FungiUnHaEgg))#OTU table where row=sample; column =ASV
+phylo_B <- bind_cols(data.frame(Sample.ID = rownames(phylo_T)), data.frame(phylo_T)) #### Adding Sample.ID as a vector
+
+str(phylo_T)
+str(phylo_B)
+head(phylo_B)
+names(phylo_B)
+
+
+phylo_met <- meta(FungiUnHaEgg)
+str(phylo_met$Stage2)
+
+names(phylo_B)
+names(phylo_met)
+
+
+colnames(phylo_met)[which(names(phylo_met) == "X.SampleID")] <- "Sample.ID"
+
+names(phylo_B)
+names(phylo_met)
+
+str(table)
+
+Tax <- data.frame(tax_table(FungiUnHaEgg))
+Tax <- bind_cols(data.frame(ASV = rownames(Tax)), data.frame(Tax))
+factor(Tax$ASV)
+ASV <- ifelse(substring(Tax$ASV, 1, 1) %in% c(0:9), paste0("X", Tax$ASV), paste(Tax$ASV))
+Tax$ASV <- ASV
+
+Tax
+
+phylo_met$Stage2
+phylo_met$FSSC2
+
+
+names(phylo_B)
+names(phylo_met)
+
+head(phylo_B$Sample.ID)
+head(phylo_met)
+
+phylo_met$Sample.ID <- phylo_met$Featureid2
+
+phylo_met$Sample.ID==phylo_B$Sample.ID
+
+
+system.time({comparison_test_FungiUnHaEgg <- ANCOM.main(OTUdat=phylo_B, #OTU table
+  Vardat=phylo_met, #metadata file
+  adjusted=FALSE, # yes to include covariates
+  repeated=FALSE, # No repeated measurements
+  main.var="Stage2",
+  adj.formula="Stage2+FSSC2", # Controling fro infection
+  longitudinal = FALSE, # No longitudinal data
+  random.formula=NULL, #follows the nlme syntax; isn't taken into consideration unless you have longitudinal data!!!
+  repeat.var=NULL, # No repeated measurements
+  multcorr=2, #1 is conservative, 2 is moderate and 3 is no correction
+  sig=0.05, #significance level
+  prev.cut=1) # OTUs with proportion of zeroes greater than prev.cut are not included in the analysis, so here we will not exclude any OTUs
+})
+
+head(comparison_test_FungiUnHaEgg$W.taxa, 35)
+
+Table_FungiUnHaEgg <- comparison_test_FungiUnHaEgg$W.taxa[which(comparison_test_FungiUnHaEgg$W.taxa$detected_0.6=="TRUE"), ]
+Table_FungiUnHaEgg
+
+colnames(Table_FungiUnHaEgg)[1] <- "ASV"
+
+Table_FungiUnHaEgg <- merge(Table_FungiUnHaEgg, Tax, by="ASV")
+Table_FungiUnHaEgg
+
+names(phylo_B)
+
+#remove the sample ID column, which is the first column
+phylo_B_trimmed <- phylo_B[-1]
+
+names(phylo_B_trimmed)
+
+# add +1 to all values in the dataframe, since that is what ANCOM does as well
+
+phylo_B_1 <- phylo_B_trimmed + 1
+
+#define the clr function
+phylo_comp <- microbiome::transform(phylo_B_1, trans="rclr")
+
+# add the landscape column again (since we didn't change the order of the data frame)
+phylo_comp$Stage2 <- phylo_met$Stage2
+phylo_comp$FSSC2 <- phylo_met$FSSC2
+phylo_comp
+
+head(phylo_comp)
+
+write.table(phylo_comp, "Tables/clrValues_Fungi_Unhatch_Hatch-Egg.txt")
+
+head(phylo_comp)
+
+n_otu=dim(phylo_comp)[2]-2
+otu_ids=colnames(phylo_comp)
+#define the vector to store the value in
+
+fValues <- vector(mode="double", length=n_otu)
+pValues <- vector(mode="double", length=n_otu)
+est_FungiUnHaEgg <- vector(mode="double", length=n_otu)
+se_FungiUnHaEgg <- vector(mode="double", length=n_otu)
+confintLower_FungiUnHaEgg <- vector(mode="double", length=n_otu)
+confintUpper_FungiUnHaEgg <- vector(mode="double", length=n_otu)
+
+
+#run the anova on each OTU
+for(ii in 1:(n_otu)){
+  #define the summary anova function:
+  command <- paste("fValTest <- summary(aov( formula=", otu_ids[ii], " ~ Stage2 + FSSC2, data = phylo_comp))")
+  #call the summary anova function
+  eval(parse(text=command))
+  #extract the f values from the anova and store it in the vector
+  fValues[ii] <- fValTest[[1]]$F[1]
+  #define the anova function:
+  pValues[ii] <- fValTest[[1]]$P[1]
+  command2 <- paste("parameters.se <- aov( formula=", otu_ids[ii], " ~ Stage2 + FSSC2, data = phylo_comp)")
+  #call the anova function
+  eval(parse(text=command2))
+  #extract the parameter estimates and standard errors from the anova and store it in the vector
+  est_FungiUnHaEgg[ii] <- coef(summary.lm(parameters.se))[2]
+  se_FungiUnHaEgg[ii] <- coef(summary.lm(parameters.se))[5]
+  confintLower_FungiUnHaEgg[ii] <- confint(parameters.se)[2]
+  confintUpper_FungiUnHaEgg[ii] <- confint(parameters.se)[5]
+}
+
+
+#create a dataframe with the F values and the corresponding OTU IDs
+fValue_dataframe_FungiUnHaEgg <- data.frame(
+otu.names = otu_ids[1:n_otu],
+fVals = fValues,
+pVals = pValues,
+estimates = est_FungiUnHaEgg,
+SE = se_FungiUnHaEgg,
+CIlower=confintLower_FungiUnHaEgg,
+CIupper=confintUpper_FungiUnHaEgg
+)
+
+fValue_dataframe_FungiUnHaEgg
+
+
+volcano_df_FungiUnHaEgg <- merge(fValue_dataframe_FungiUnHaEgg, comparison_test_FungiUnHaEgg$W, by = "otu.names")
+volcano_df_FungiUnHaEgg
+
+volcano_df_FungiUnHaEgg$otu.names <- as.character(volcano_df_FungiUnHaEgg$otu.names)
+
+volcano_df_FungiUnHaEgg$otu.names <- gsub('X', '', volcano_df_FungiUnHaEgg$otu.names)
+
+str(volcano_df_FungiUnHaEgg$otu.names)
+str(volcano_df_FungiUnHaEgg$otu.names)
+nrow(volcano_df_FungiUnHaEgg)
+
+names(Tax)
+
+Tax$otu.names <- Tax$ASV
+
+Tax$otu.names <- gsub('X', '', Tax$otu.names)
+
+volcano_df_FungiUnHaEgg <- merge(volcano_df_FungiUnHaEgg, Tax, by="otu.names")
+
+class(volcano_df_FungiUnHaEgg)
+head(volcano_df_FungiUnHaEgg)
+
+write.table(volcano_df_FungiUnHaEgg, "Tables/Ancom_Fungi_Un_hatch_Inf.txt")
+
+
+volcano_df_FungiUnHaEgg$St <- "Un-HatchedEgg"
+
+volcano_df_FungiUnHaEgg
+
+
+head(volcano_df_FungiUnHaEgg)
+
+
+p_format <- p_format(volcano_df_FungiUnHaEgg, pVals, new.col= TRUE, digits= 1, accuracy = 1e-03, decimal.mark = ".",
+leading.zero = TRUE,
+trailing.zero = FALSE,
+add.p = FALSE,
+space = FALSE, )
+
+head(p_format)
+
+
+p_format <- p_mark_significant(
+p_format, pVals.format,
+new.col = FALSE,
+cutpoints = c(0, 1e-04, 0.001, 0.01, 0.05, 1),
+symbols = c("****", "***", "**", "*", "")
+)
+
+volcano_df_FungiUnHaEgg <- merge(volcano_df_FungiUnHaEgg, p_format)
+
+
+###### Lowest possible taxonomic level ######
+
+volcano_df_FungiUnHaEgg$TaxaLabel <- ifelse(grepl("uncultured", volcano_df_FungiUnHaEgg$Genus), paste0("Family_", volcano_df_FungiUnHaEgg$Family), ifelse(grepl("uncultured", volcano_df_FungiUnHaEgg$Species), paste0("Genus_", volcano_df_FungiUnHaEgg$Genus), ifelse(grepl("Ambiguous_taxa", volcano_df_FungiUnHaEgg$Species), paste0("Genus_", volcano_df_FungiUnHaEgg$Genus), ifelse(grepl("uncultured bacterium", volcano_df_FungiUnHaEgg$Species), paste0("Genus_", volcano_df_FungiUnHaEgg$Genus), ifelse(grepl("NA", volcano_df_FungiUnHaEgg$Class), paste0("Phylum_", volcano_df_FungiUnHaEgg$Phylum), ifelse(grepl("NA", volcano_df_FungiUnHaEgg$Order), paste0("Class_", volcano_df_FungiUnHaEgg$Class), ifelse(grepl("NA", volcano_df_FungiUnHaEgg$Family), paste0("Order_", volcano_df_FungiUnHaEgg$Order), ifelse(grepl("NA", volcano_df_FungiUnHaEgg$Genus), paste0("Family_", volcano_df_FungiUnHaEgg$Family), ifelse(grepl("NA", volcano_df_FungiUnHaEgg$Species), paste0("Genus_", volcano_df_FungiUnHaEgg$Genus), paste0(volcano_df_FungiUnHaEgg$Genus))))))))))
+
+
+volcano_df_FungiUnHaEgg$TaxaLabel
+
+head(volcano_df_FungiUnHaEgg, 50)
+
+
+Fungi_Wclr_FungiUnHaEgg <- ggplot(volcano_df_FungiUnHaEgg, aes(y=W_stat, x=estimates, col=Phylum))+geom_point(size=rel(2.5))+scale_colour_manual(values= ana_col_alot)+theme_linedraw(18)+geom_text_repel(data=volcano_df_FungiUnHaEgg[which(volcano_df_FungiUnHaEgg$detected_0.7==TRUE & volcano_df_FungiUnHaEgg$pVals<0.05), ], aes(y=W_stat, x=estimates, label= paste(TaxaLabel, "\n(", pVals.format, ")", sep="")), size=rel(6), nudge_x =0.5, nudge_y = -0.7, force=2, segment.size =0.2, parse=FALSE, max.overlaps = Inf, show.legend = FALSE)+xlab(substitute(paste("Differential logs (clr)")))+ylab(substitute(paste(italic("W"), "statistic from ANCOM ITS")))+geom_vline(xintercept=0, linetype="dotted")+geom_hline(yintercept=102, linetype="dotted", color="grey")+scale_x_continuous(expand = expansion(mult = 0.5))+ scale_y_continuous(expand = c(0, 0), limits = c(-1, length(volcano_df_FungiUnHaEgg$W_stat)), position="left", sec.axis = sec_axis(~ . / length(volcano_df_FungiUnHaEgg$W_stat), breaks=seq(0, 0.9, 0.1), name=substitute(paste(italic("W "), "threshold"))))+theme(axis.title=element_text(size = 12))+theme(title=element_text(size = 11))
+
+
+Fungi_Wclr_FungiUnHaEgg
+
+
+######## CONTROLLING FOR STAGE+FSSC
+
+
+phylo_T <- t(abundances(FungiUnHaEgg))#OTU table where row=sample; column =ASV
+phylo_B <- bind_cols(data.frame(Sample.ID = rownames(phylo_T)), data.frame(phylo_T)) #### Adding Sample.ID as a vector
+
+str(phylo_T)
+str(phylo_B)
+head(phylo_B)
+names(phylo_B)
+
+
+phylo_met <- meta(FungiUnHaEgg)
+str(phylo_met$Stage2)
+
+names(phylo_B)
+names(phylo_met)
+
+
+colnames(phylo_met)[which(names(phylo_met) == "X.SampleID")] <- "Sample.ID"
+
+names(phylo_B)
+names(phylo_met)
+
+str(table)
+
+Tax <- data.frame(tax_table(FungiUnHaEgg))
+Tax <- bind_cols(data.frame(ASV = rownames(Tax)), data.frame(Tax))
+factor(Tax$ASV)
+ASV <- ifelse(substring(Tax$ASV, 1, 1) %in% c(0:9), paste0("X", Tax$ASV), paste(Tax$ASV))
+Tax$ASV <- ASV
+
+Tax
+
+phylo_met$Stage2
+phylo_met$FSSC2
+
+
+names(phylo_B)
+names(phylo_met)
+
+head(phylo_B$Sample.ID)
+head(phylo_met)
+
+phylo_met$Sample.ID <- phylo_met$Featureid2
+
+phylo_met$Sample.ID==phylo_B$Sample.ID
+
+
+system.time({comparison_test_FungiInf <- ANCOM.main(OTUdat=phylo_B, #OTU table
+  Vardat=phylo_met, #metadata file
+  adjusted=FALSE, # yes to include covariates
+  repeated=FALSE, # No repeated measurements
+  main.var="FSSC2",
+  adj.formula="Stage2+FSSC2", # Controlling for development
+  longitudinal = FALSE, # No longitudinal data
+  random.formula=NULL, #follows the nlme syntax; isn't taken into consideration unless you have longitudinal data!!!
+  repeat.var=NULL, # No repeated measurements
+  multcorr=2, #1 is conservative, 2 is moderate and 3 is no correction
+  sig=0.05, #significance level
+  prev.cut=1) # OTUs with proportion of zeroes greater than prev.cut are not included in the analysis, so here we will not exclude any OTUs
+})
+
+head(comparison_test_FungiInf$W.taxa, 15)
+
+Table_FungiInf <- comparison_test_FungiInf$W.taxa[which(comparison_test_FungiInf$W.taxa$detected_0.6=="TRUE"), ]
+Table_FungiInf
+
+colnames(Table_FungiInf)[1] <- "ASV"
+
+Table_FungiInf <- merge(Table_FungiInf, Tax, by="ASV")
+Table_FungiInf
+
+names(phylo_B)
+
+#remove the sample ID column, which is the first column
+phylo_B_trimmed <- phylo_B[-1]
+
+names(phylo_B_trimmed)
+
+# add +1 to all values in the dataframe, since that is what ANCOM does as well
+
+phylo_B_1 <- phylo_B_trimmed + 1
+
+#define the clr function
+phylo_comp <- microbiome::transform(phylo_B_1, trans="rclr")
+
+# add the landscape column again (since we didn't change the order of the data frame)
+phylo_comp$FSSC2 <- phylo_met$FSSC2
+phylo_comp$Stage2 <- phylo_met$Stage2
+
+phylo_comp
+
+head(phylo_comp)
+
+write.table(phylo_comp, "Tables/clrValues_Un-hatch_FungiInf.txt")
+
+n_otu=dim(phylo_comp)[2]-2
+otu_ids=colnames(phylo_comp)
+#define the vector to store the value in
+
+
+fValues <- vector(mode="double", length=n_otu)
+pValues <- vector(mode="double", length=n_otu)
+est_FungiInf <- vector(mode="double", length=n_otu)
+se_FungiInf <- vector(mode="double", length=n_otu)
+confintLower_FungiInf <- vector(mode="double", length=n_otu)
+confintUpper_FungiInf <- vector(mode="double", length=n_otu)
+
+
+#run the anova on each OTU
+for(ii in 1:(n_otu)){
+  #define the summary anova function:
+  command <- paste("fValTest <- summary(aov( formula=", otu_ids[ii], " ~ FSSC2 + Stage2, data = phylo_comp))")
+  #call the summary anova function
+  eval(parse(text=command))
+  #extract the f values from the anova and store it in the vector
+  fValues[ii] <- fValTest[[1]]$F[1]
+  #define the anova function:
+  pValues[ii] <- fValTest[[1]]$P[1]
+  command2 <- paste("parameters.se <- aov( formula=", otu_ids[ii], " ~ FSSC2 + Stage2, data = phylo_comp)")
+  #call the anova function
+  eval(parse(text=command2))
+  #extract the parameter estimates and standard errors from the anova and store it in the vector
+  est_FungiInf[ii] <- coef(summary.lm(parameters.se))[2]
+  se_FungiInf[ii] <- coef(summary.lm(parameters.se))[5]
+  confintLower_FungiInf[ii] <- confint(parameters.se)[2]
+  confintUpper_FungiInf[ii] <- confint(parameters.se)[5]
+}
+
+
+#create a dataframe with the F values and the corresponding OTU IDs
+fValue_dataframe_FungiInf <- data.frame(
+otu.names = otu_ids[1:n_otu],
+fVals = fValues,
+pVals = pValues,
+estimates = est_FungiInf,
+SE = se_FungiInf,
+CIlower=confintLower_FungiInf,
+CIupper=confintUpper_FungiInf
+)
+
+fValue_dataframe_FungiInf
+
+
+min(fValues)
+
+max(fValues)
+
+volcano_df_FungiInf <- merge(fValue_dataframe_FungiInf, comparison_test_FungiInf$W, by = "otu.names")
+volcano_df_FungiInf
+
+volcano_df_FungiInf$otu.names <- as.character(volcano_df_FungiInf$otu.names)
+
+volcano_df_FungiInf$otu.names <- gsub('X', '', volcano_df_FungiInf$otu.names)
+
+str(volcano_df_FungiInf$otu.names)
+str(volcano_df_FungiInf$otu.names)
+nrow(volcano_df_FungiInf)
+
+
+names(Tax)
+
+Tax$otu.names <- Tax$ASV
+
+Tax$otu.names <- gsub('X', '', Tax$otu.names)
+
+volcano_df_FungiInf <- merge(volcano_df_FungiInf, Tax, by="otu.names")
+
+class(volcano_df_FungiInf)
+head(volcano_df_FungiInf)
+
+write.table(volcano_df_FungiInf, "Tables/Ancom_Un-HatchFungiInf.txt")
+
+
+volcano_df_FungiInf$St <- "Un-Hatch-FSSCinf"
+
+volcano_df_FungiInf
+
+
+########## ANCOM EMBRYO EGGS AND HATCHED EGGS #########
+
+head(volcano_df_FungiInf)
+
+
+p_format <- p_format(volcano_df_FungiInf, pVals, new.col= TRUE, digits= 1, accuracy = 1e-03, decimal.mark = ".",
+leading.zero = TRUE,
+trailing.zero = FALSE,
+add.p = FALSE,
+space = FALSE, )
+
+head(p_format)
+
+
+p_format <- p_mark_significant(
+p_format, pVals.format,
+new.col = FALSE,
+cutpoints = c(0, 1e-04, 0.001, 0.01, 0.05, 1),
+symbols = c("****", "***", "**", "*", "")
+)
+
+volcano_df_FungiInf <- merge(volcano_df_FungiInf, p_format)
+
+
+###### Lowest possible taxonomic level ######
+
+volcano_df_FungiInf$TaxaLabel <- ifelse(grepl("uncultured", volcano_df_FungiInf$Genus), paste0("Family_", volcano_df_FungiInf$Family), ifelse(grepl("uncultured", volcano_df_FungiInf$Species), paste0("Genus_", volcano_df_FungiInf$Genus), ifelse(grepl("Ambiguous_taxa", volcano_df_FungiInf$Species), paste0("Genus_", volcano_df_FungiInf$Genus), ifelse(grepl("uncultured bacterium", volcano_df_FungiInf$Species), paste0("Genus_", volcano_df_FungiInf$Genus), ifelse(grepl("NA", volcano_df_FungiInf$Class), paste0("Phylum_", volcano_df_FungiInf$Phylum), ifelse(grepl("NA", volcano_df_FungiInf$Order), paste0("Class_", volcano_df_FungiInf$Class), ifelse(grepl("NA", volcano_df_FungiInf$Family), paste0("Order_", volcano_df_FungiInf$Order), ifelse(grepl("NA", volcano_df_FungiInf$Genus), paste0("Family_", volcano_df_FungiInf$Family), ifelse(grepl("NA", volcano_df_FungiInf$Species), paste0("Genus_", volcano_df_FungiInf$Genus), paste0(volcano_df_FungiInf$Genus))))))))))
+
+
+volcano_df_FungiInf$TaxaLabel
+
+head(volcano_df_FungiInf, 50)
+
+
+Fungi_Wclr_FungiInf <- ggplot(volcano_df_FungiInf, aes(y=W_stat, x=estimates, col=Phylum))+geom_point(size=rel(2.5))+scale_colour_manual(values= ana_col_alot)+theme_linedraw(18)+geom_text_repel(data=volcano_df_FungiInf[which(volcano_df_FungiInf$detected_0.7==TRUE & volcano_df_FungiInf$pVals<0.05), ], aes(y=W_stat, x=estimates, label= paste(TaxaLabel, "\n(", pVals.format, ")", sep="")), size=rel(6), nudge_x =0.5, nudge_y = -0.7, force=2, segment.size =0.2, parse=FALSE, max.overlaps = Inf, show.legend = FALSE)+xlab(substitute(paste("Differential logs (clr)")))+ylab(substitute(paste(italic("W"), "statistic from ANCOM ITS")))+geom_vline(xintercept=0, linetype="dotted")+geom_hline(yintercept=102, linetype="dotted", color="grey")+scale_x_continuous(expand = expansion(mult = 0.5))+ scale_y_continuous(expand = c(0, 0), limits = c(-1, length(volcano_df_FungiInf$W_stat)), position="left", sec.axis = sec_axis(~ . / length(volcano_df_FungiInf$W_stat), breaks=seq(0, 0.9, 0.1), name=substitute(paste(italic("W "), "threshold"))))+theme(axis.title=element_text(size = 12))+theme(title=element_text(size = 11))
+
+
+Fungi_Wclr_FungiInf
+
+==============================================================================
+# SECTION 3 — PICRUSt2 DATA EXTRACTION
+# ==============================================================================
+
+#### extracting data for PICRUST2
+
+#########################
+###### BACTERIOME #######
+#########################
+
+#### start with the bacteriome data
+
+library(Biostrings)
+
+# Extract sequences from phyloseq
+seqs <- refseq(Micro_EGG_control_clean)
+
+writeXStringSet(seqs, "16Srefseqs.fasta")
+
+
+# Extract and save feature table
+otu_table <- as.matrix(otu_table(Micro_EGG_control_clean))
+biom_object <- make_biom(data=otu_table)
+write_biom(biom_object, "feature-table.biom")
+
+meta <- sample_data(Micro_EGG_control_clean)
+
+## run PICRUST2 with the extracted data and then import the output
+### PICRUST2 PIPELINE run through QIIME2: https://github.com/picrust/picrust2/wiki/q2-picrust2-Tutorial/
+
+
+#########################
+####### MYCOBIOME #######
+#########################
+
+# Extract sequences from phyloseq
+seqs <- refseq(Myco_EGG_control_clean)
+# save the sequences in a folder to run PYCRUST through FROGSFUNC 
+writeXStringSet(seqs, "ITSrep-seqs.fasta")
+
+# Extract and save feature table
+otu_table <- as.matrix(otu_table(Myco_EGG_control_clean))
+biom_object <- make_biom(data=otu_table)
+write_biom(biom_object, "feature-table.biom")
+# Extract sample metadata
+sample_metadata <- as.data.frame(sample_data(Myco_EGG_control_clean))
+
+tree <- phy_tree(Myco_EGG_control_clean)
+
+# Write the tree to a Newick file
+write.tree(tree, file = "phyloseq_tree.newick")
+
+## run PICRUST2 with the extracted data and then import the output through FROGSFUNC 
+### PIPELINE: https://github.com/geraldinepascal/FROGS
+
+
+
+############### IMPORTING PICRUSt2 RESULTS BACTERIOME
+
+# Import PICRUSt2 data (assuming you've already exported and converted to TSV)
+# Import pathway abundance data without modifying column names
+pathway_data <- read.table("pathway_abundance.tsv",
+header = TRUE,
+sep = "\t",
+row.names = 1,
+skip = 1,
+comment.char = "",
+check.names = FALSE) # This prevents the X prefix and - to . conversion
+
+# Transpose the data (pathways as columns, samples as rows)
+pathway_data_t <- as.data.frame(t(pathway_data))
+
+# Check the first few row names to confirm they're preserved correctly
+head(rownames(pathway_data_t))
+
+head(pathway_data_t)
+
+### Remove X on the IDs
+rownames(pathway_data) <- rownames(pathway_data) %>%
+str_remove("^X") %>%
+str_replace_all("\\.", "-")
+
+
+# Ensure sample IDs match between pathway data and metadata
+# Check if all sample IDs in pathway_data are in metadata
+all(rownames(pathway_data_t) %in% rownames(meta))
+
+# If needed, subset metadata to match pathway_data samples
+metadata_subset <- meta[rownames(pathway_data_t), ]
+
+# Create a merged data frame for easy analysis
+# This keeps pathway data separate from metadata
+merged_data <- list(
+pathways = pathway_data,
+metadata = metadata_subset
+)
+
+# Alternatively, for some analyses, you might want a combined data frame
+combined_data <- cbind(pathway_data_t, metadata_subset)
+
+# Prepare data for ANCOM
+# First, we need to transpose the pathway data back to features as rows
+pathway_matrix <- as.matrix(pathway_data_t)
+
+# Convert to a matrix-like object that ANCOMBC can use
+pathway_counts <- round(pathway_matrix, 0) # Scale and round if necessary
+
+# Create a phyloseq object (required for ANCOMBC)
+library(phyloseq)
+
+# Create OTU table
+head(counts_matrix)
+head(metadata_subset)
+
+counts_matrix <- as.matrix(pathway_counts)
+OTU <- otu_table(counts_matrix, taxa_are_rows = FALSE)
+
+# Create sample data from metadata
+SAMP <- sample_data(metadata_subset)
+
+all(rownames(OTU) %in% rownames(SAMP))
+
+print(sample_names(OTU))
+
+print(sample_names(SAMP))
+
+# Combine into a phyloseq object
+physeq <- phyloseq(OTU, SAMP)
+
+saveRDS(physeq, "physeqPicrust16S.rds")
+
+################# IMPORTING PICRUSt2 RESULTS MYCOBIOME
+# Import PICRUSt2 data (assuming you've already exported and converted to TSV)
+# Import pathway abundance data without modifying column names
+
+ITSpathway_data <- read.table("path_abun_unstrat_0.5.tsv",
+header = TRUE,
+sep = "\t",
+row.names = 1,
+skip = 1,
+comment.char = "",
+check.names = FALSE) # This prevents the X prefix and - to. conversion
+
+head(ITSpathway_data)
+# Transpose the data (pathways as columns, samples as rows)
+ITSpathway_data_t <- as.data.frame(t(ITSpathway_data))
+
+# Check the first few row names to confirm they're preserved correctly
+head(rownames(ITSpathway_data_t))
+
+head(ITSpathway_data_t)
+
+# Ensure sample IDs match between pathway data and metadata
+# Check if all sample IDs in ITSpathway_data are in metadata
+all(rownames(ITSpathway_data_t) %in% rownames(sample_metadata))
+
+# If needed, subset metadata to match ITSpathway_data samples
+metadata_subset <- sample_metadata[rownames(ITSpathway_data_t), ]
+
+# Create a merged data frame for easy analysis
+# This keeps pathway data separate from metadata
+merged_data <- list(
+pathways = ITSpathway_data,
+metadata = metadata_subset
+)
+
+# Alternatively, for some analyses, you might want a combined data frame
+combined_data <- cbind(ITSpathway_data_t, metadata_subset)
+
+# Prepare data for ANCOM
+# First, we need to transpose the pathway data back to features as rows
+pathway_matrix <- as.matrix(ITSpathway_data)
+
+# Convert to a matrix-like object that ANCOMBC can use
+pathway_counts <- round(pathway_matrix, 0) # Scale and round if necessary
+
+
+#ko2kegg_abundance(file = pathway_matrix, data = NULL)
+
+
+# Create a phyloseq object (required for ANCOMBC)
+
+# Create OTU table
+
+head(metadata_subset)
+counts_matrix <- as.matrix(pathway_counts)
+head(counts_matrix)
+
+OTU <- t(otu_table(counts_matrix, taxa_are_rows = TRUE))
+
+# Create sample data from metadata
+SAMP <- sample_data(metadata_subset)
+
+all(rownames(OTU) %in% rownames(SAMP))
+
+print(sample_names(OTU))
+
+print(sample_names(SAMP))
+
+# Combine into a phyloseq object
+physeq <- phyloseq(OTU, SAMP)
+
+### save phyloseq to use later for ANCOM
+saveRDS(physeq, "physeqPicrustITS2.rds")
+# ==============================================================================
+# SECTION 4 — ANCOM FOR PICRUSt2 PATHWAYS BACTERIOME
+# ==============================================================================
+
+picrustphy16S <- readRDS("physeqPicrust16S.rds")
+
+Stage2 <- factor(sample_data(picrustphy16S)$Stage, levels=c("UnhatchedEggED","UnhatchedEggLD", "HatchedEgg"), labels=c("UnhatchedEgg", "UnhatchedEgg", "HatchedEgg"))
+
+sample_data(picrustphy16S)$Stage2 <- Stage2
+
+factor(sample_data(picrustphy16S)$Stage2)
+
+phylo_T <- t(abundances(picrustphy16S))#OTU table where row=sample; column =ASV
+rownames(phylo_T)
+
+phylo_B <- bind_cols(data.frame(Sample.ID = rownames(phylo_T)), data.frame(phylo_T)) #### Adding Sample.ID as a vector
+
+str(phylo_T)
+str(phylo_B)
+head(phylo_B)
+names(phylo_B)
+
+
+phylo_met <- meta(picrustphy16S)
+str(phylo_met$Stage2)
+
+names(phylo_B)
+names(phylo_met)
+
+
+colnames(phylo_met)[which(names(phylo_met) == "X.SampleID")] <- "Sample.ID"
+
+names(phylo_B)
+names(phylo_met)
+
+str(table)
+
+## instead of taxa
+# Extract pathway descriptions if available
+if("description" %in% colnames(pathway_data)) {
+  path_info <- data.frame(
+  Pathway = colnames(pathway_data_t)[-1], # Skip Sample.ID column
+  Description = pathway_data$description
+  )
+} else {
+  # If no descriptions, just create a simple mapping
+  path_info <- data.frame(
+  Pathway = colnames(pathway_data_t)[-1] # Skip Sample.ID column
+  )
+}
+
+# Add a prefix to pathway IDs if they start with numbers
+path_info$Pathway <- ifelse(substring(path_info$Pathway, 1, 1) %in% c(0:9),
+paste0("X", path_info$Pathway),
+paste(path_info$Pathway))
+
+
+path_info
+head(path_info)
+
+
+phylo_met$Stage2
+phylo_met$FSSC2
+
+
+names(phylo_B)
+names(phylo_met)
+
+head(phylo_B$Sample.ID)
+head(phylo_met)
+
+phylo_met$Sample.ID <- phylo_met$Featureid
+
+phylo_met$Sample.ID==phylo_B$Sample.ID
+
+
+system.time({comparison_test_pi16S <- ANCOM.main(OTUdat=phylo_B, #OTU table
+  Vardat=phylo_met, #metadata file
+  adjusted=TRUE, # yes to include covariates
+  repeated=FALSE, # No repeated measurements
+  main.var="Stage2",
+  adj.formula="Stage2 + FSSC2",
+  longitudinal = FALSE, # No longitudinal data
+  random.formula=NULL, #follows the nlme syntax; isn't taken into consideration unless you have longitudinal data!!!
+  repeat.var=NULL, # No repeated measurements
+  multcorr=2, #1 is conservative, 2 is moderate and 3 is no correction
+  sig=0.05, #significance level
+  prev.cut=1) # OTUs with proportion of zeroes greater than prev.cut are not included in the analysis, so here we will not exclude any OTUs
+})
+
+
+saveRDS(comparison_test_pi16S, "comparison_test_pi16S.rds")
+
+head(comparison_test_pi16S$W.taxa, 5)
+
+picrustUnHatch <- comparison_test_pi16S$W.taxa[which(comparison_test_pi16S$W.taxa$detected_0.6=="TRUE"), ]
+picrustUnHatch
+
+head(picrustUnHatch)
+
+names(phylo_B)
+
+
+#remove the sample ID column, which is the first column
+phylo_B_trimmed <- phylo_B[-1]
+
+names(phylo_B_trimmed)
+
+#define the clr function
+phylo_comp <- data.frame(microbiome::transform(phylo_B_trimmed, trans="clr"))
+
+rownames(phylo_comp)
+# add the landscape column again (since we didn't change the order of the data frame)
+phylo_comp$Stage2 <- phylo_met$Stage2
+phylo_comp$FSSC2 <- phylo_met$FSSC2
+
+phylo_comp
+
+head(phylo_comp)
+
+n_otu=dim(phylo_comp)[2]-2
+otu_ids=colnames(phylo_comp)
+#define the vector to store the value in
+
+
+fValues <- vector(mode="double", length=n_otu)
+pValues <- vector(mode="double", length=n_otu)
+est_picrustUnHatch <- vector(mode="double", length=n_otu)
+se_picrustUnHatch <- vector(mode="double", length=n_otu)
+confintLower_picrustUnHatch <- vector(mode="double", length=n_otu)
+confintUpper_picrustUnHatch <- vector(mode="double", length=n_otu)
+
+
+#run the anova on each OTU
+for(ii in 1:(n_otu)){
+  #define the summary anova function:
+  command <- paste("fValTest <- summary(aov( formula=", otu_ids[ii], " ~ Stage2 + FSSC2, data = phylo_comp))")
+  #call the summary anova function
+  eval(parse(text=command))
+  #extract the f values from the anova and store it in the vector
+  fValues[ii] <- fValTest[[1]]$F[1]
+  #define the anova function:
+  pValues[ii] <- fValTest[[1]]$P[1]
+  command2 <- paste("parameters.se <- aov( formula=", otu_ids[ii], " ~ Stage2 + FSSC2, data = phylo_comp)")
+  #call the anova function
+  eval(parse(text=command2))
+  #extract the parameter estimates and standard errors from the anova and store it in the vector
+  est_picrustUnHatch[ii] <- coef(summary.lm(parameters.se))[2]
+  se_picrustUnHatch[ii] <- coef(summary.lm(parameters.se))[5]
+  confintLower_picrustUnHatch[ii] <- confint(parameters.se)[2]
+  confintUpper_picrustUnHatch[ii] <- confint(parameters.se)[5]
+}
+
+
+#create a dataframe with the F values and the corresponding OTU IDs
+fValue_dataframe_picrustUnHatch <- data.frame(
+otu.names = otu_ids[1:n_otu],
+fVals = fValues,
+pVals = pValues,
+estimates = est_picrustUnHatch,
+SE = se_picrustUnHatch,
+CIlower=confintLower_picrustUnHatch,
+CIupper=confintUpper_picrustUnHatch
+)
+
+fValue_dataframe_picrustUnHatch
+
+head(fValue_dataframe_picrustUnHatch)
+
+hist(fValue_dataframe_picrustUnHatch$estimates)
+
+volcano_df_picrustUnHatch <- merge(fValue_dataframe_picrustUnHatch, comparison_test_pi16S$W, by = "otu.names")
+volcano_df_picrustUnHatch
+
+hist(volcano_df_picrustUnHatch$estimates)
+head(volcano_df_picrustUnHatch)
+
+
+volcano_df_picrustUnHatch$otu.names <- as.character(volcano_df_picrustUnHatch$otu.names)
+
+volcano_df_picrustUnHatch$otu.names <- gsub('X', '', volcano_df_picrustUnHatch$otu.names)
+
+str(volcano_df_picrustUnHatch$otu.names)
+str(volcano_df_picrustUnHatch$otu.names)
+nrow(volcano_df_picrustUnHatch)
+
+
+########## ANCOM EMBRYO EGGS AND HATCHED EGGS #########
+head(volcano_df_picrustUnHatch)
+unique(volcano_df_picrustUnHatch$otu.names)
+# Create a volcano plot
+volcano_data <- data.frame(
+Pathway = volcano_df_picrustUnHatch$otu.names,
+W_stat = volcano_df_picrustUnHatch$W,
+estimates = volcano_df_picrustUnHatch$estimates,
+Significant = volcano_df_picrustUnHatch$detected_0.7,
+pVals = volcano_df_picrustUnHatch$pVals,
+CIlower = volcano_df_picrustUnHatch$CIlower,
+CIupper = volcano_df_picrustUnHatch$CIupper
+)
+
+head(volcano_df_picrustUnHatch)
+# Add descriptions if available
+if(exists("path_info")) {
+  volcano_df_picrustUnHatch <- merge(volcano_data, path_info,
+  by.x = "Pathway", by.y = "Pathway",
+  all.x = TRUE)
+}
+
+### save table for plotting later
+write.table(volcano_df_picrustUnHatch,"Tables/volcano_df_picrustUnHatch_16S.txt")
+
+
+######## CONTROLING FOR STAGE+FSSC
+
+
+phylo_T <- t(abundances(picrustphy16S))#OTU table where row=sample; column =ASV
+rownames(phylo_T)
+
+phylo_B <- bind_cols(data.frame(Sample.ID = rownames(phylo_T)), data.frame(phylo_T)) #### Adding Sample.ID as a vector
+
+str(phylo_T)
+str(phylo_B)
+head(phylo_B)
+names(phylo_B)
+
+
+phylo_met <- meta(picrustphy16S)
+str(phylo_met$Stage2)
+
+names(phylo_B)
+names(phylo_met)
+
+
+colnames(phylo_met)[which(names(phylo_met) == "X.SampleID")] <- "Sample.ID"
+
+names(phylo_B)
+names(phylo_met)
+
+str(table)
+
+## instead of taxa
+# Extract pathway descriptions if available
+if("description" %in% colnames(pathway_data)) {
+  path_info <- data.frame(
+  Pathway = colnames(pathway_data_t)[-1], # Skip Sample.ID column
+  Description = pathway_data$description
+  )
+} else {
+  # If no descriptions, just create a simple mapping
+  path_info <- data.frame(
+  Pathway = colnames(pathway_data_t)[-1] # Skip Sample.ID column
+  )
+}
+
+# Add a prefix to pathway IDs if they start with numbers
+path_info$Pathway <- ifelse(substring(path_info$Pathway, 1, 1) %in% c(0:9),
+paste0("X", path_info$Pathway),
+paste(path_info$Pathway))
+
+
+path_info
+head(path_info)
+
+phylo_met$Stage2
+phylo_met$FSSC2
+
+names(phylo_B)
+names(phylo_met)
+
+head(phylo_B$Sample.ID)
+head(phylo_met)
+
+phylo_met$Sample.ID <- phylo_met$Featureid
+
+phylo_met$Sample.ID==phylo_B$Sample.ID
+
+
+system.time({comparison_test_pi16SInf <- ANCOM.main(OTUdat=phylo_B, #OTU table
+  Vardat=phylo_met, #metadata file
+  adjusted=TRUE, # yes to include covariates
+  repeated=FALSE, # No repeated measurements
+  main.var="FSSC2",
+  adj.formula="Stage2+FSSC2",
+  longitudinal = FALSE, # No longitudinal data
+  random.formula=NULL, #follows the nlme syntax; isn't taken into consideration unless you have longitudinal data!!!
+  repeat.var=NULL, # No repeated measurements
+  multcorr=2, #1 is conservative, 2 is moderate and 3 is no correction
+  sig=0.05, #significance level
+  prev.cut=1) # OTUs with proportion of zeroes greater than prev.cut are not included in the analysis, so here we will not exclude any OTUs
+})
+
+saveRDS(comparison_test_pi16SInf, "comparison_test_pi16SInf.rds")
+
+head(comparison_test_pi16SInf$W.taxa, 35)
+
+picrustUnHatchInf <- comparison_test_pi16SInf$W.taxa[which(comparison_test_pi16SInf$W.taxa$detected_0.6=="TRUE"), ]
+picrustUnHatchInf
+
+head(picrustUnHatchInf)
+
+
+colnames(picrustUnHatchInf)[1] <- "Pathway"
+
+picrustUnHatchInf <- merge(picrustUnHatchInf, path_info, by="Pathway")
+picrustUnHatchInf
+
+names(phylo_B)
+
+#remove the sample ID column, which is the first column
+phylo_B_trimmed <- phylo_B[-1]
+
+names(phylo_B_trimmed)
+
+#define the clr function
+phylo_comp <- data.frame(microbiome::transform(phylo_B_trimmed, trans="clr"))
+
+
+# add the landscape column again (since we didn't change the order of the data frame)
+phylo_comp$FSSC2 <- phylo_met$FSSC2
+phylo_comp$Stage2 <- phylo_met$Stage2
+
+phylo_comp
+
+head(phylo_comp)
+
+n_otu=dim(phylo_comp)[2]-2
+otu_ids=colnames(phylo_comp)
+#define the vector to store the value in
+
+
+fValues <- vector(mode="double", length=n_otu)
+pValues <- vector(mode="double", length=n_otu)
+est_picrustUnHatchInf <- vector(mode="double", length=n_otu)
+se_picrustUnHatchInf <- vector(mode="double", length=n_otu)
+confintLower_picrustUnHatchInf <- vector(mode="double", length=n_otu)
+confintUpper_picrustUnHatchInf <- vector(mode="double", length=n_otu)
+
+
+#run the anova on each OTU
+for(ii in 1:(n_otu)){
+  #define the summary anova function:
+  command <- paste("fValTest <- summary(aov( formula=", otu_ids[ii], " ~ FSSC2 + Stage2, data = phylo_comp))")
+  #call the summary anova function
+  eval(parse(text=command))
+  #extract the f values from the anova and store it in the vector
+  fValues[ii] <- fValTest[[1]]$F[1]
+  #define the anova function:
+  pValues[ii] <- fValTest[[1]]$P[1]
+  command2 <- paste("parameters.se <- aov( formula=", otu_ids[ii], " ~ FSSC2 + Stage2, data = phylo_comp)")
+  #call the anova function
+  eval(parse(text=command2))
+  #extract the parameter estimates and standard errors from the anova and store it in the vector
+  est_picrustUnHatchInf[ii] <- coef(summary.lm(parameters.se))[2]
+  se_picrustUnHatchInf[ii] <- coef(summary.lm(parameters.se))[5]
+  confintLower_picrustUnHatchInf[ii] <- confint(parameters.se)[2]
+  confintUpper_picrustUnHatchInf[ii] <- confint(parameters.se)[5]
+}
+
+
+#create a dataframe with the F values and the corresponding OTU IDs
+fValue_dataframe_picrustUnHatchInf <- data.frame(
+otu.names = otu_ids[1:n_otu],
+fVals = fValues,
+pVals = pValues,
+estimates = est_picrustUnHatchInf,
+SE = se_picrustUnHatchInf,
+CIlower=confintLower_picrustUnHatchInf,
+CIupper=confintUpper_picrustUnHatchInf
+)
+
+fValue_dataframe_picrustUnHatchInf
+
+
+
+volcano_df_picrustUnHatchInf <- merge(fValue_dataframe_picrustUnHatchInf, comparison_test_pi16SInf$W, by = "otu.names")
+volcano_df_picrustUnHatchInf
+
+volcano_df_picrustUnHatchInf$otu.names <- as.character(volcano_df_picrustUnHatchInf$otu.names)
+
+volcano_df_picrustUnHatchInf$otu.names <- gsub('X', '', volcano_df_picrustUnHatchInf$otu.names)
+
+str(volcano_df_picrustUnHatchInf$otu.names)
+str(volcano_df_picrustUnHatchInf$otu.names)
+nrow(volcano_df_picrustUnHatchInf)
+
+
+########## ANCOM EMBRYO EGGS AND HATCHED EGGS #########
+head(volcano_df_picrustUnHatchInf)
+unique(volcano_df_picrustUnHatchInf$otu.names)
+# Create a volcano plot
+volcano_data <- data.frame(
+Pathway = volcano_df_picrustUnHatchInf$otu.names,
+W_stat = volcano_df_picrustUnHatchInf$W,
+estimates = volcano_df_picrustUnHatchInf$estimates,
+Significant = volcano_df_picrustUnHatchInf$detected_0.6,
+pVals = volcano_df_picrustUnHatchInf$pVals,
+CIlower = volcano_df_picrustUnHatchInf$CIlower,
+CIupper = volcano_df_picrustUnHatchInf$CIupper
+)
+
+head(volcano_df_picrustUnHatchInf)
+# Add descriptions if available
+if(exists("path_info")) {
+  volcano_df_picrustUnHatchInf <- merge(volcano_data, path_info,
+  by.x = "Pathway", by.y = "Pathway",
+  all.x = TRUE)
+}
+
+head(volcano_df_picrustUnHatchInf)
+
+###save table for plotting later
+write.table(volcano_df_picrustUnHatchInf,"Tables/volcano_df_picrustUnHatchInf16S.txt")
+
+
+==============================================================================
+# SECTION 5 — ANCOM FOR PICRUSt2 PATHWAYS MYCOBIOME
+# ==============================================================================
+
+
+piITS <- readRDS("physeqPicrustITS2.rds")
+
+Stage2 <- factor(sample_data(piITS)$Stage, levels=c("UnhatchedEggED","UnhatchedEggLD", "HatchedEgg"), labels=c("UnhatchedEgg", "UnhatchedEgg", "HatchedEgg"))
+
+sample_data(piITS)$Stage2 <- Stage2
+
+factor(sample_data(piITS)$Stage2)
+
+
+phylo_T <- t(abundances(piITS))#OTU table where row=sample; column =ASV
+rownames(phylo_T)
+
+phylo_B <- bind_cols(data.frame(Sample.ID = rownames(phylo_T)), data.frame(phylo_T)) #### Adding Sample.ID as a vector
+
+str(phylo_T)
+str(phylo_B)
+head(phylo_B)
+names(phylo_B)
+
+
+phylo_met <- meta(piITS)
+str(phylo_met$Stage2)
+
+names(phylo_B)
+names(phylo_met)
+
+
+colnames(phylo_met)[which(names(phylo_met) == "X.SampleID")] <- "Sample.ID"
+
+names(phylo_B)
+names(phylo_met)
+
+str(table)
+
+## instead of taxa
+
+TAX <- tax_table(as.matrix(data.frame(
+Function = colnames(funfun_sample),
+row.names = colnames(funfun_sample)
+)))
+
+head(tax)
+
+# Extract pathway descriptions if available
+if("description" %in% colnames(pathway_data)) {
+  path_info <- data.frame(
+  Pathway = rownames(pathway_data)[], # Skip Sample.ID column
+  Description = pathway_data$description
+  )
+} else {
+  # If no descriptions, just create a simple mapping
+  path_info <- data.frame(
+  Pathway = rownames(pathway_data)[] # Skip Sample.ID column
+  )
+}
+
+# Add a prefix to pathway IDs if they start with numbers
+path_info$Pathway <- ifelse(substring(path_info$Pathway, 1, 1) %in% c(0:9),
+paste0("X", path_info$Pathway),
+paste(path_info$Pathway))
+
+
+phylo_met$Stage2
+phylo_met$FSSC2
+
+
+names(phylo_B)
+names(phylo_met)
+
+head(phylo_B$Sample.ID)
+head(phylo_met)
+
+phylo_met$Sample.ID <- phylo_met$Featureid2
+
+phylo_met$Sample.ID==phylo_B$Sample.ID
+
+
+system.time({comparison_test_piITS <- ANCOM.main(OTUdat=phylo_B, #OTU table
+  Vardat=phylo_met, #metadata file
+  adjusted=TRUE, # yes to include covariates
+  repeated=FALSE, # No repeated measurements
+  main.var="Stage2",
+  adj.formula="Stage2+FSSC2",
+  longitudinal = FALSE, # No longitudinal data
+  random.formula=NULL, #follows the nlme syntax; isn't taken into consideration unless you have longitudinal data!!!
+  repeat.var=NULL, # No repeated measurements
+  multcorr=2, #1 is conservative, 2 is moderate and 3 is no correction
+  sig=0.05, #significance level
+  prev.cut=1) # OTUs with proportion of zeroes greater than prev.cut are not included in the analysis, so here we will not exclude any OTUs
+})
+
+
+head(comparison_test_piITS$W.taxa)
+
+### NO significant pathways detected
+
+
+######## CONTROLING FOR STAGE+FSSC
+
+
+phylo_T <- t(abundances(piITS))#OTU table where row=sample; column =ASV
+rownames(phylo_T)
+
+phylo_B <- bind_cols(data.frame(Sample.ID = rownames(phylo_T)), data.frame(phylo_T)) #### Adding Sample.ID as a vector
+
+str(phylo_T)
+str(phylo_B)
+head(phylo_B)
+names(phylo_B)
+
+
+phylo_met <- meta(piITS)
+str(phylo_met$Stage2)
+
+names(phylo_B)
+names(phylo_met)
+
+
+colnames(phylo_met)[which(names(phylo_met) == "X.SampleID")] <- "Sample.ID"
+
+names(phylo_B)
+names(phylo_met)
+
+str(table)
+
+## instead of taxa
+# Extract pathway descriptions if available
+if("description" %in% colnames(pathway_data)) {
+  path_info <- data.frame(
+  Pathway = colnames(pathway_data_t)[-1], # Skip Sample.ID column
+  Description = pathway_data$description
+  )
+} else {
+  # If no descriptions, just create a simple mapping
+  path_info <- data.frame(
+  Pathway = colnames(pathway_data_t)[-1] # Skip Sample.ID column
+  )
+}
+
+# Add a prefix to pathway IDs if they start with numbers
+path_info$Pathway <- ifelse(substring(path_info$Pathway, 1, 1) %in% c(0:9),
+paste0("X", path_info$Pathway),
+paste(path_info$Pathway))
+
+
+path_info
+head(path_info)
+#Tax <- data.frame(otu_table(FunfunITS))
+#Tax <- bind_cols(data.frame(ASV = rownames(Tax)), data.frame(Tax))
+#factor(Tax$ASV)
+#ASV <- ifelse(substring(Tax$ASV, 1, 1) %in% c(0:9), paste0("X", Tax$ASV), paste(Tax$#ASV))
+#Tax$ASV <- ASV
+#
+#Tax
+
+phylo_met$Stage2
+phylo_met$FSSC2
+
+
+names(phylo_B)
+names(phylo_met)
+
+head(phylo_B$Sample.ID)
+head(phylo_met)
+
+phylo_met$Sample.ID <- phylo_met$Featureid2
+
+phylo_met$Sample.ID==phylo_B$Sample.ID
+
+
+system.time({comparison_test_piITSInf <- ANCOM.main(OTUdat=phylo_B, #OTU table
+  Vardat=phylo_met, #metadata file
+  adjusted=TRUE, # yes to include covariates
+  repeated=FALSE, # No repeated measurements
+  main.var="FSSC2",
+  adj.formula="Stage2+FSSC2",
+  longitudinal = FALSE, # No longitudinal data
+  random.formula=NULL, #follows the nlme syntax; isn't taken into consideration unless you have longitudinal data!!!
+  repeat.var=NULL, # No repeated measurements
+  multcorr=2, #1 is conservative, 2 is moderate and 3 is no correction
+  sig=0.05, #significance level
+  prev.cut=1) # OTUs with proportion of zeroes greater than prev.cut are not included in the analysis, so here we will not exclude any OTUs
+})
+
+head(comparison_test_piITSInf$W.taxa, 4)
+
+### No significant pathways detected
+
+
+#################################
+##### 16S function boxplot #####
+#################################
+
+############## for hatchability 
+
+ancom_data <- read.table("volcano_df_picrustUnHatch.txt", 
+                         header = TRUE, sep = "\t")
+
+head(ancom_data)
+
+# Clean and prepare the data
+ancom_data_clean <- ancom_data %>%
+  filter(!is.na(Function) & !is.na(estimates)) %>%
+  mutate(
+    estimates = as.numeric(estimates),
+    Group = ifelse(estimates > 0, "Hatched", "Unhatched")
+  ) %>%
+
+
+############## for infection
+
+
+ancom_data_inf <- read.table("volcano_df_picrustUnHatchInf.txt", 
+                         header = TRUE, sep = "\t")
+
+
+ancom_data_clean$dataset <- print("Unhatched vs Hatched")
+ancom_data_inf_clean$dataset <- print("Uninfected vs Infected")
+
+names(ancom_data_clean)
+names(ancom_data_inf_clean)
+
+library(dplyr)
+ancom_data_inf_clean <- rename(ancom_data_inf_clean, Stage = Inf.)
+
+names(ancom_data_clean)
+names(ancom_data_inf_clean)
+
+ancom_data_function <- rbind(ancom_data_clean,ancom_data_inf_clean)
+
+
+ancom_data_function$Group <- (factor(ancom_data_function$Group,levels=c("Hatched","Unhatched","Infected","Uninfected")))
+
+library(ggh4x)
+
+(Function <- ggplot(ancom_data_function, aes(y = fct_reorder(Function, estimates), 
+                           x = estimates, 
+                           fill = Group)) + 
+  ggforce::facet_col(facets = vars(dataset), 
+                     scales = "free_y", 
+                     space = "free") +
+  geom_bar(stat = "identity")+
+  scale_fill_manual(values = c("Hatched" = "#009E73", "Unhatched" = "#a47e91", "Infected" = "#ffa328", "Uninfected" = "#703ebe")) +
+  labs(
+    y = "",
+    x = "Differential logs (clr)"
+  ) +
+  theme_classic() + ggtitle("e. Bacteriome: Differential abundance of predicted functions", subtitle= "") +
+  theme(
+    axis.text.y = element_text(size = 22),
+    axis.text.x = element_text(size = 22),
+    legend.position = "none",
+    strip.text.x = element_text(size = 32),plot.title= element_text(hjust = 1.2, size = 36), plot.subtitle=element_text(hjust = 0, size = 22),legend.title = element_text(size = 20),legend.text = element_text(size = 16), legend.direction="vertical",axis.title.x =element_text(size = 32),axis.title.y = element_text(size = 32)
+  ))
+
+
+####################################################################
+#### COMBINING THE ANCOM TAXONOMY PLOTS AND THE FUNCTIONAL PLOTS ###
+####################################################################
+
+png("Volcano-Hatching_Infection.png",height=8400, width=13000,res=300)
+
+design <- "AABBE
+           CCDDE"
+
+Micro_Wclr_MicroUnHatch2 + Micro_Wclr_MicroInf +Fungi_Wclr_FungiUnHaEgg + Fungi_Wclr_FungiInf + Function + plot_layout(design = design, axes = "collect") 
+
+dev.off()
+
+
+####################################################################
+######## FOR THE SUPPLEMENTARY FIGURES DO THE SUBSETS AND RUN THE CODE AS ABOVER ACCORDING TO EACH MARKER #########
+
+######## TO TEST FOR FSSC INFECTION PER DEVELOPMENTAL STAGE SUBSET EACH STAGE PER INFECTION AND RUN THE ANCOM CODE AS ABOVE WITH THE main.var = FSSC2 in the ANCOM model  #########
+####################################################################
+
+factor(sample_data(Micro_EGG_class)$Stage)
+
+### SUBSET THE DATA
+## UNHATCHED ED vs LD EGGS ##
+
+MicroEDEggDF <- Micro_EGG_class %>% subset_samples(Stage== "UnhatchedEggED")
+MicroLDEggDF <- Micro_EGG_class %>% subset_samples(Stage == "UnhatchedEggLD")
+
+MicroEmbryoEgg <- merge_phyloseq(MicroEDEggDF, MicroLDEggDF)
+
+
+MicroEmbryoEgg_G <- MicroEmbryoEgg%>%phyloseq::tax_glom(taxrank = "Genus")
+
+data.frame(tax_table(MicroEmbryoEgg_G))
+
+class(MicroEmbryoEgg_G)
+
+### SUBSET THE DATA
+## UNHATCHED ED vs HATCHED EGGS ##
+
+MicroEDEggDF <- Micro_EGG_class %>% subset_samples(Stage== "UnhatchedEggED")
+MicroHatchEggDF <- Micro_EGG_class %>% subset_samples(Stage == "HatchedEgg")
+MicroEDHatchEgg <- merge_phyloseq(MicroEDEggDF, MicroHatchEggDF)
+
+MicroEDHatchEgg <- MicroEDHatchEgg%>%phyloseq::tax_glom(taxrank = "Genus")
+
+
+### SUBSET THE DATA
+## UNHATCHED LD vs HATCHED EGGS ##
+
+MicroLDEggDF <- Micro_EGG_class %>% subset_samples(Stage== "UnhatchedEggLD")
+MicroHatchEggDF <- Micro_EGG_class %>% subset_samples(Stage == "HatchedEgg")
+MicroLDHatchEgg <- merge_phyloseq(MicroLDEggDF, MicroHatchEggDF)
+
+#MicroLDHatchEgg <- speedyseq::tree_glom(MicroLDHatchEgg, 0.05)
+
+MicroLDHatchEgg <- MicroLDHatchEgg%>%phyloseq::tax_glom(taxrank = "Genus")
+
+
+###########################################################
+##############################################################################
+# END OF 05_AMCOM_PICRUST2.R
+##############################################################################
