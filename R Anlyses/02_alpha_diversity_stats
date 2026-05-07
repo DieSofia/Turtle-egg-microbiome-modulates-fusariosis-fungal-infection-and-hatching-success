@@ -1,0 +1,367 @@
+
+##############################################################################
+# 02_alpha_diversity.R
+#
+# OBJECTIVE: Statistical models for alpha diversity (observed richness and
+#            Shannon) for the bacteriome (16S) and mycobiome (ITS).
+##############################################################################
+
+
+##############################################################################
+# 1. 16S – PREPARE ALPHA DIVERSITY DATA FRAME
+##############################################################################
+
+# ---- 1.1  Attach sequencing depth to alpha table  ------- #
+
+SeqDepth <- as.data.frame(sample_sums(Micro_EGG_control_clean))
+SeqDepth <- setDT(SeqDepth, keep.rownames = TRUE)[]
+names(SeqDepth) <- c("Featureid", "SeqDepth")
+
+Micro_EGG_alfa <- merge(Micro_EGG_alfa, SeqDepth, by = "Featureid")
+
+head(Micro_EGG_alfa)
+names(Micro_EGG_alfa)
+
+
+# ---- 1.2  Response variable exploration --------------------------------- #
+
+x11()
+hist(Micro_EGG_alfa$observed, breaks = 100)
+boxplot(Micro_EGG_alfa$observed ~ Micro_EGG_alfa$Stage)
+plot(Micro_EGG_alfa$observed ~ scale(Micro_EGG_alfa$SeqDepth))
+abline(lm(Micro_EGG_alfa$observed ~ scale(Micro_EGG_alfa$SeqDepth)))
+
+
+##############################################################################
+# 2. 16S – OBSERVED RICHNESS MODELS
+##############################################################################
+
+# ---- 2.1  Candidate models ---------------------------------------------- #
+
+# Additive (selected model for paper)
+M1Inf.4   <- glm.nb(observed ~ FSSC2 + Stage,
+                    data = Micro_EGG_alfa, na.action = na.fail) ##best model
+
+# Additive + SeqDepth covariate
+M1Inf.4.0 <- glm.nb(observed ~ FSSC2 + Stage + SeqDepth,
+                    data = Micro_EGG_alfa, na.action = na.fail)
+
+# Interaction model
+M1Inf.4.1 <- glm.nb(observed ~ FSSC2 * Stage,
+                    data = Micro_EGG_alfa, na.action = na.fail)
+
+
+# ---- 2.2  Model comparison --------------------------------------------- #
+
+anova(M1Inf.4, M1Inf.4.1)
+AIC(M1Inf.4, M1Inf.4.0, M1Inf.4.1)
+
+
+# ---- 2.3  Model diagnostics and selection (with SeqDepth) --------------- #
+
+dredge(M1Inf.4.0, extra = "adjR^2")
+
+
+##############################################################################
+# 3. 16S – SHANNON DIVERSITY MODELS
+##############################################################################
+
+# ---- 3.1  Candidate models ---------------------------------------------- #
+
+# Additive (selected model for paper)
+M1Inf_sh   <- glm(diversity_shannon ~ Stage + FSSC2,
+                  data = Micro_EGG_alfa, na.action = na.fail,
+                  family = Gamma(identity)) ##best
+
+# Additive + SeqDepth covariate 
+M1Inf_sh.0 <- glm(diversity_shannon ~ Stage + FSSC2 + SeqDepth,
+                  data = Micro_EGG_alfa, na.action = na.fail,
+                  family = Gamma)
+
+# Interaction model
+M2Inf_sh   <- glm(diversity_shannon ~ Stage * FSSC2,
+                  data = Micro_EGG_alfa, na.action = na.fail,
+                  family = Gamma(identity))
+
+
+# ---- 3.2  Model comparison --------------------------------------------- #
+
+AIC(M1Inf_sh, M1Inf_sh.0, M2Inf_sh)
+
+
+# ---- 3.3  Model selection (with SeqDepth) ------------------------------- #
+
+dredge(M1Inf_sh, extra = "adjR^2")
+
+dredge(M1Inf_sh.0, extra = "adjR^2")
+
+
+
+##############################################################################
+# 4. 16S – MODEL COMPARISON FRAMEWORK (B-series)
+##############################################################################
+# This framework is used in the paper to report effects of:
+# Stage (development) and FSSC2 (fusariosis infection) on alpha diversity.
+
+# ---- 4.1  Define all candidate models ----------------------------------- #
+
+# Interaction models
+B1_obs <- glm.nb(observed ~ FSSC2 * Stage,
+                 data = Micro_EGG_alfa, na.action = na.fail)
+B1_sh  <- glm(diversity_shannon ~ Stage * FSSC2,
+              data = Micro_EGG_alfa, na.action = na.fail,
+              family = Gamma(identity))
+
+# Additive models (both predictors)
+B2_obs <- glm.nb(observed ~ FSSC2 + Stage,
+                 data = Micro_EGG_alfa, na.action = na.fail)
+B2_sh  <- glm(diversity_shannon ~ FSSC2 + Stage,
+              data = Micro_EGG_alfa, na.action = na.fail,
+              family = Gamma(identity))
+
+# Stage only
+B3_obs <- glm.nb(observed ~ Stage,
+                 data = Micro_EGG_alfa, na.action = na.fail)
+B3_sh  <- glm(diversity_shannon ~ Stage,
+              data = Micro_EGG_alfa, na.action = na.fail,
+              family = Gamma(identity))
+
+# FSSC2 only
+B4_obs <- glm.nb(observed ~ FSSC2,
+                 data = Micro_EGG_alfa, na.action = na.fail)
+B4_sh  <- glm(diversity_shannon ~ FSSC2,
+              data = Micro_EGG_alfa, na.action = na.fail,
+              family = Gamma(identity))
+
+# SeqDepth + Stage (to report the effect of depth after accounting for development)
+DB2_obs <- glm.nb(observed ~ SeqDepth + Stage,
+                  data = Micro_EGG_alfa, na.action = na.fail)
+DB2_sh  <- glm(diversity_shannon ~ SeqDepth + Stage,
+               data = Micro_EGG_alfa, na.action = na.fail,
+               family = Gamma)
+
+# SeqDepth only
+DB4_obs <- glm.nb(observed ~ SeqDepth,
+                  data = Micro_EGG_alfa, na.action = na.fail)
+DB4_sh  <- glm(diversity_shannon ~ SeqDepth,
+               data = Micro_EGG_alfa, na.action = na.fail,
+               family = Gamma)
+
+
+# ---- 4.2  Compare interaction vs. additive ------------------------------ #
+
+anova(B1_obs, B2_obs);  MuMIn::AICc(B1_obs, B2_obs)
+anova(B1_sh,  B2_sh);   MuMIn::AICc(B1_sh,  B2_sh)
+
+
+# ---- 4.3  Effect of FSSC2 (infection): additive vs. Stage-only ---------- #
+
+anova(B2_obs, B3_obs);  MuMIn::AICc(B2_obs, B3_obs)
+anova(B2_sh,  B3_sh);   MuMIn::AICc(B2_sh,  B3_sh)
+
+
+# ---- 4.4  Effect of Stage (development): additive vs. FSSC2-only -------- #
+
+anova(B2_obs, B4_obs);  MuMIn::AICc(B2_obs, B4_obs)
+anova(B2_sh,  B4_sh, test = "F"); MuMIn::AICc(B2_sh, B4_sh)
+
+
+# ---- 4.5  Effect of FSSC2: interaction vs. Stage-only ------------------- #
+
+anova(B1_obs, B3_obs);  MuMIn::AICc(B1_obs, B3_obs)
+anova(B1_sh,  B3_sh);   MuMIn::AICc(B1_sh,  B3_sh)
+
+
+# ---- 4.6  Effect of SeqDepth after accounting for Stage ----------------- #
+
+anova(DB2_obs, DB4_obs);  MuMIn::AICc(DB2_obs, DB4_obs)
+anova(DB2_sh,  DB4_sh, test = "F"); MuMIn::AICc(DB2_sh, DB4_sh)
+
+
+##############################################################################
+# 5. ITS – PREPARE ALPHA DIVERSITY DATA FRAME
+##############################################################################
+
+# ---- 5.1  Attach sequencing depth to ITS alpha table --------------------- #
+
+SeqDepthFungi <- as.data.frame(sample_sums(ITS_EGG_class))
+SeqDepthFungi <- setDT(SeqDepthFungi, keep.rownames = TRUE)[]
+names(SeqDepthFungi) <- c("Featureid2", "SeqDepthFungi")
+
+Fungi_EGG_alfa <- merge(Fungi_EGG_alfa, SeqDepthFungi, by = "Featureid2")
+
+head(Fungi_EGG_alfa)
+names(Fungi_EGG_alfa)
+
+
+# ---- 5.2  Response variable exploration --------------------------------- #
+
+hist(Fungi_EGG_alfa$observed, breaks = 100)
+boxplot(Fungi_EGG_alfa$observed ~ Fungi_EGG_alfa$Stage)
+plot(Fungi_EGG_alfa$observed ~ scale(Fungi_EGG_alfa$SeqDepthFungi))
+abline(lm(Fungi_EGG_alfa$observed ~ scale(Fungi_EGG_alfa$SeqDepthFungi)))
+
+##############################################################################
+# 6. ITS – OBSERVED RICHNESS MODELS
+##############################################################################
+
+# ---- 6.1  Candidate models ---------------------------------------------- #
+
+# Additive (selected model for paper)
+FM1Inf.4   <- glm.nb(observed ~ FSSC2 + Stage,
+                     data = Fungi_EGG_alfa, na.action = na.fail)
+
+# Interaction model
+FM1Inf.4.1 <- glm.nb(observed ~ FSSC2 * Stage,
+                     data = Fungi_EGG_alfa, na.action = na.fail)
+
+
+# ---- 6.2  Model comparison --------------------------------------------- #
+
+AIC(FM1Inf.4, FM1Inf.4.1)
+
+
+anova(FM1Inf.4.1)
+
+
+# ---- 6.3  Model selection ----------------------------------------------- #
+
+dredge(FM1Inf.4, extra = "adjR^2")
+
+
+
+##############################################################################
+# 7. ITS – SHANNON DIVERSITY MODELS
+##############################################################################
+
+# ---- 7.1  Zero-inflation check ------------------------------------------ #
+
+100 * sum(Fungi_EGG_alfa$diversity_shannon == 0) / nrow(Fungi_EGG_alfa)
+# ~11 % zeros -> zero-inflated Gamma model appropriate
+
+qqnorm(Fungi_EGG_alfa$diversity_shannon)
+hist(Fungi_EGG_alfa$diversity_shannon)
+
+
+# ---- 7.2  Candidate models ---------------------------------------------- #
+
+# Zero-inflated Gamma, additive (selected model for paper)
+FM5Inf_sh <- glmmTMB(diversity_shannon ~ Stage + FSSC2,
+                     family     = ziGamma(link = "log"),
+                     ziformula  = ~ 1,
+                     data       = Fungi_EGG_alfa,
+                     na.action  = na.fail)
+
+# Zero-inflated Gamma, interaction + SeqDepth 
+FM6Inf_sh <- glmmTMB(diversity_shannon ~ Stage * FSSC2 + SeqDepthFungi,
+                     family     = ziGamma(link = "log"),
+                     ziformula  = ~ 1,
+                     data       = Fungi_EGG_alfa,
+                     na.action  = na.fail)
+
+AIC(FM5Inf_sh, FM6Inf_sh)
+
+
+# ---- 7.3  Model diagnostics -------------------------------------------- #
+
+R1 <- resid(FM5Inf_sh)
+F1 <- fitted(FM5Inf_sh)
+plot(R1 ~ F1)
+qqnorm(R1)
+
+summary(FM5Inf_sh)
+
+
+# ---- 7.4  Model selection ----------------------------------------------- #
+
+dredge(FM5Inf_sh)
+
+
+##############################################################################
+# 8. ITS – MODEL COMPARISON FRAMEWORK (F-series)
+##############################################################################
+
+# ---- 8.1  Define all candidate models ----------------------------------- #
+
+# Interaction models
+F1_obs <- glm.nb(observed ~ FSSC2 * Stage,
+                 data = Fungi_EGG_alfa, na.action = na.fail)
+F1_sh  <- glmmTMB(diversity_shannon ~ Stage * FSSC2,
+                  family = ziGamma(link = "log"), ziformula = ~ 1,
+                  data = Fungi_EGG_alfa, na.action = na.fail)
+
+# Additive models (both predictors)
+F2_obs <- glm.nb(observed ~ FSSC2 + Stage,
+                 data = Fungi_EGG_alfa, na.action = na.fail)
+F2_sh  <- glmmTMB(diversity_shannon ~ FSSC2 + Stage,
+                  family = ziGamma(link = "log"), ziformula = ~ 1,
+                  data = Fungi_EGG_alfa, na.action = na.fail)
+
+# Stage only
+F3_obs <- glm.nb(observed ~ Stage,
+                 data = Fungi_EGG_alfa, na.action = na.fail)
+F3_sh  <- glmmTMB(diversity_shannon ~ Stage,
+                  family = ziGamma(link = "log"), ziformula = ~ 1,
+                  data = Fungi_EGG_alfa, na.action = na.fail)
+
+# FSSC2 only
+F4_obs <- glm.nb(observed ~ FSSC2,
+                 data = Fungi_EGG_alfa, na.action = na.fail)
+F4_sh  <- glmmTMB(diversity_shannon ~ FSSC2,
+                  family = ziGamma(link = "log"), ziformula = ~ 1,
+                  data = Fungi_EGG_alfa, na.action = na.fail)
+
+# SeqDepth + Stage (to report the effect of depth after accounting for development)
+DF2_obs <- glm.nb(observed ~ Stage + SeqDepthFungi,
+                  data = Fungi_EGG_alfa, na.action = na.fail)
+DF2_sh  <- glmmTMB(diversity_shannon ~ SeqDepthFungi + Stage,
+                   family = ziGamma(link = "log"), ziformula = ~ 1,
+                   data = Fungi_EGG_alfa, na.action = na.fail)
+
+# SeqDepth only
+DF4_obs <- glm.nb(observed ~ SeqDepthFungi,
+                  data = Fungi_EGG_alfa, na.action = na.fail)
+DF4_sh  <- glmmTMB(diversity_shannon ~ SeqDepthFungi,
+                   family = ziGamma(link = "log"), ziformula = ~ 1,
+                   data = Fungi_EGG_alfa, na.action = na.fail)
+
+
+# ---- 8.2  Compare interaction vs. additive ------------------------------ #
+
+anova(F1_obs, F2_obs);  MuMIn::AICc(F1_obs, F2_obs)
+anova(F1_sh,  F2_sh);   MuMIn::AICc(F1_sh,  F2_sh)
+
+
+# ---- 8.3  Effect of FSSC2 (infection): additive vs. Stage-only ---------- #
+
+anova(F2_obs, F3_obs);  MuMIn::AICc(F2_obs, F3_obs)
+anova(F2_sh,  F3_sh);   MuMIn::AICc(F2_sh,  F3_sh)
+
+
+# ---- 8.4  Effect of Stage (development): additive vs. FSSC2-only -------- #
+
+anova(F2_obs, F4_obs);  MuMIn::AICc(F2_obs, F4_obs)
+anova(F2_sh,  F4_sh);   MuMIn::AICc(F2_sh,  F4_sh)
+
+
+# ---- 8.5  Effect of FSSC2: interaction vs. Stage-only ------------------- #
+
+anova(F1_obs, F3_obs);  MuMIn::AICc(F1_obs, F3_obs)
+anova(F1_sh,  F3_sh);   MuMIn::AICc(F1_sh,  F3_sh)
+
+
+# ---- 8.6  Effect of SeqDepth after accounting for Stage ----------------- #
+
+anova(DF2_obs, DF4_obs);  MuMIn::AICc(DF2_obs, DF4_obs)
+anova(DF2_sh,  DF4_sh);   MuMIn::AICc(DF2_sh,  DF4_sh)
+
+
+# ---- 8.7  dredge with SeqDepthFungi (ITS model selection table) --------- #
+
+dredge(DF2_obs, extra = "adjR^2")
+
+
+
+##############################################################################
+# END OF 02_alpha_diversity.R
+##############################################################################
