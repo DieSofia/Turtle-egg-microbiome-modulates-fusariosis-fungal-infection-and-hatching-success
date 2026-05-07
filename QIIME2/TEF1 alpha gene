@@ -1,1 +1,251 @@
 
+######################################################################
+#######    TEF1 alpha GENE QIIME2, DATA BASE AND CLASSIFIER    ####### 
+#######            MAKING FOR METAGENOMIC ANALYSIS             #######
+######################################################################
+#######            Ana Sofia Carranco - Ulm University         #######
+#######         Contact: anasoficarranco@gmail.com             #######
+######################################################################
+
+### in case linux bugs with "locales" again:
+### sudo dpkg-reconfigure locales
+
+
+
+#hola ana
+###open a linux terminal
+###open your user in the super computer
+###in the terminal open tmux
+tmux
+
+
+###open qiime2
+conda activate qiime2
+
+
+cd yourpath
+
+ls 
+
+qiime tools import \
+  --type 'SampleData[PairedEndSequencesWithQuality]' \
+  --input-path  \
+  --input-format CasavaOneEightSingleLanePerSampleDirFmt  \
+  --output-path demux-paired-end.qza
+
+
+qiime cutadapt trim-paired \
+--i-demultiplexed-sequences /demux-paired-end.qza \
+--p-front-f NNNNCCGGTCACTTGATCTACCAG \
+--p-front-r ATGACGGTGACATAGTAGCG \
+--p-error-rate .1 \
+--p-indels \
+--p-match-read-wildcards \
+--p-discard-untrimmed \
+--o-trimmed-sequences run_TEFtrimmed.qza \
+--verbose
+
+
+qiime demux summarize \
+    --i-data /run_TEFtrimmed.qza \
+    --o-visualization /run_TEFtrimmed.qzv 
+
+### Now check the output
+
+qiime tools view /run_TEFtrimmed.qzv
+
+
+
+mkdir QIIMEout
+
+qiime dada2 denoise-paired \
+--i-demultiplexed-seqs /run_TEFtrimmed.qza \
+--p-n-threads 32 \
+--p-trunc-len-f 225 \
+--p-trunc-len-r 225 \
+--p-chimera-method pooled \
+--o-table /QIIMEout/table-dada2.qza \
+--o-representative-sequences /QIIMEout/rep-seqs-dada2.qza \
+--o-denoising-stats /QIIMEout/DADA2stats.qza \
+--verbose
+
+
+qiime tools view table-dada2.qzv
+
+qiime feature-table tabulate-seqs \
+  --i-data /QIIMEout/rep-seqs-dada2.qza \
+  --o-visualization /QIIMEout/rep-seqs-dada2.qzv
+
+
+qiime tools view rep-seqs-dada2.qzv
+
+
+
+################### BUILD THE TAXONOMICAL CLASIFIER#######
+
+#getting the NCBI data through the plugin of R script 
+
+qiime rescript get-ncbi-data \
+    --p-query 'elongation factor 1-alpha[All Fields] AND fungi[filter]'\
+    --o-sequences ncbi-refseqs-unfilteredfungi.qza \
+    --o-taxonomy ncbi-refseqs-taxonomy-unfilteredfungi.qza \
+    --p-n-jobs 30
+
+
+qiime rescript filter-seqs-length-by-taxon \
+    --i-sequences ncbi-refseqs-unfilteredfungi.qza \
+    --i-taxonomy ncbi-refseqs-taxonomy-unfilteredfungi.qza \
+    --p-labels Eukarya Fungi \
+    --p-min-lens 100 1200 \
+    --o-filtered-seqs ncbi-refseqsfungi.qza \
+    --o-discarded-seqs ncbi-refseqs-tooshortfungi.qza
+
+
+
+qiime rescript filter-taxa \
+    --i-taxonomy ncbi-refseqs-taxonomy-unfilteredfungi.qza \
+    --m-ids-to-keep-file ncbi-refseqsfungi.qza \
+    --o-filtered-taxonomy ncbi-refseqs-taxonomyfungi.qza
+
+
+
+
+##Now we need to "train" the database, which basically extracting the TEF (EFalpha 1) region of interest using the primers that we used to amplify our amplicon#
+
+qiime feature-classifier extract-reads \
+--i-sequences ncbi-refseqsfungi.qza \
+--p-f-primer CCGGTCACTTGATCTACCAG \
+--p-r-primer ATGACGGTGACATAGTAGCG \
+--p-n-jobs 30 \
+--p-read-orientation 'both' \
+--o-reads ncbi-specific-ref-seqs.qza
+
+
+qiime feature-classifier fit-classifier-naive-bayes \
+--i-reference-reads ncbi-specific-ref-seqs.qza \
+--i-reference-taxonomy ncbi-refseqs-taxonomyfungi.qza \
+--o-classifier ncbi-refseqs-classifierfungi.qza
+
+
+#### Now we apply our classifier created with rScript within our sequences to obtain the taxonomy
+
+
+qiime feature-classifier classify-sklearn \
+  --i-classifier /ncbi-refseqs-classifierfungi.qza \
+  --i-reads /QIIMEout/rep-seqs-dada2.qza \
+  --p-n-jobs 30 \
+  --o-classification /QIIMEout/taxonomyfungi.qza
+
+
+#lets visualise our taxonmic assingment of our sequences!
+
+qiime metadata tabulate \
+  --m-input-file /QIIMEout/taxonomyfungi.qza \
+  --o-visualization /QIIMEout/taxonomyfungi.qzv
+
+
+
+qiime tools view taxonomyfungi.qzv
+
+
+#lets visualise our results as a barplot:
+
+qiime taxa barplot \
+  --i-table /QIIMEout/table-dada2.qza \
+  --i-taxonomy /QIIMEout/taxonomyfungi.qza \
+  --m-metadata-file /TEF_FungiMetadata.csv \
+  --o-visualization /QIIMEout/taxa-bar-plots.qzv
+
+  qiime tools view /QIIMEout/taxa-bar-plots.qzv
+
+
+###lets remove unnasigned sequences
+
+qiime taxa filter-table \
+  --i-table /QIIMEout/table-dada2.qza  \
+  --i-taxonomy /QIIMEout/taxonomyfungi.qza \
+  --p-exclude Unassigned \
+  --o-filtered-table /QIIMEout/table-filtered.qza
+
+
+qiime taxa filter-seqs \
+  --i-sequences /QIIMEout/rep-seqs-dada2.qza \
+  --i-taxonomy /QIIMEout/taxonomyfungi.qza \
+  --p-exclude Unassigned \
+  --o-filtered-sequences /QIIMEout/rep-seqs-filtered.qza
+
+
+#Again lets visualise our taxonmic assingment of our sequences after filtering!
+
+qiime feature-table summarize \
+--i-table table-filtered.qza \
+--o-visualization table-filtered.qzv \
+--m-sample-metadata-file /TEF_FungiMetadata.txt
+
+#lets visualize the taxonomic assingment after filtering 
+
+qiime tools view table-dada2.qzv
+
+
+qiime feature-table tabulate-seqs \
+  --i-data /QIIMEout/rep-seqs-filtered.qza \
+  --o-visualization /QIIMEout/rep-seqs-filtered.qzv
+
+qiime tools view table-filtered.qzv
+
+#lets visualise our filtered results as a boxplot:
+
+qiime taxa barplot \
+  --i-table /QIIMEout/table-filtered.qza \
+  --i-taxonomy /QIIMEout/taxonomyfungi.qza \
+  --m-metadata-file /TEF_FungiMetadata.txt \
+  --o-visualization /QIIMEout/filtered-taxa-bar-plots.qzv
+
+qiime tools view /QIIMEout/filtered-taxa-bar-plots.qzv
+
+
+
+#Ok now we will export the data into R to take the information of the taxonomy, ASV count and in which samples are Fusarium pathogens present. We will add this information into the 16S and ITS metadatas to use it as our variables throught the analysis.
+
+qiime tools export \
+  --input-path /QIIMEout/table-filtered.qza \
+  --output-path /QIIMEout/exported-table
+
+
+qiime tools export \
+  --input-path /QIIMEout/taxonomyfungi.qza \
+  --output-path /QIIMEout/taxonomy
+
+biom convert -i /QIIMEout/exported-table/feature-table.biom -o /QIIMEout/exported-table/fusarium.txt --header-key taxonomy --to-tsv
+
+cd /QIIMEout/exported-table/
+ls
+
+
+R
+
+table<-read.csv("/QIIMEout/exported-table/fusarium.txt",sep='\t',check.names=FALSE,skip=1)
+head(table)
+names(table)
+
+
+Taxonomy<-read.table ("/QIIMEout/taxonomy/taxonomy.tsv",sep='\t', header=TRUE)
+
+head(Taxonomy)
+names(Taxonomy)
+
+table$taxonomy<-with(Taxonomy,Taxon[match(table$"#OTU ID",Taxonomy$Feature.ID)])
+
+
+write.table(table,"/QIIMEout/exported-table/fusariumTaxonomy.txt",row.names=FALSE,sep="\t")
+
+quit()
+
+sed -i '1s/^/# Constructed from biom file\n/' fusariumTaxonomy_ed.txt
+sed -i -e 's/"//g' fusariumTaxonomy_ed.txt
+ls
+subl fusariumTaxonomy.txt
+
+biom convert -i /QIIMEout/exported-table/fusariumTaxonomy_ed.txt -o /QIIMEout/exported-table/fusariumTaxonomy_ed.biom --table-type "OTU table" --process-obs-metadata taxonomy --to-json
+
+############## Now lets jump to the analysis in R 
