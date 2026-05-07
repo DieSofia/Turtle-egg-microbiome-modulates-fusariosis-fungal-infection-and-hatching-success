@@ -593,5 +593,4 @@ dev.off()
 
 ##############################################################################
 # END OF 03_beta_diversity.R
-##############################################################################
-##### To produce the plot with the nest environment (Supplementary figure) just re-run the script with the RDA file including the nest environment.
+
