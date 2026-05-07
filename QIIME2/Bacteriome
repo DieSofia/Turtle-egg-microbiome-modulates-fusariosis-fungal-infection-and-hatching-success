@@ -1,1 +1,260 @@
 
+######################################################################
+#######      16S V4 REGION QIIME2 SCRIPT, CLASSIFIER MAKING    ####### 
+#######               FOR METAGENOMIC ANALYSIS                 #######
+######################################################################
+#######            Ana Sofia Carranco - Ulm University         #######
+#######         Contact: anasoficarranco@gmail.com             #######
+######################################################################
+
+tmux
+
+
+###open qiime2
+conda activate qiime2
+
+
+
+
+cd yourpath
+
+qiime tools import \
+  --type 'SampleData[PairedEndSequencesWithQuality]' \
+  --input-path yourpath\
+  --input-format CasavaOneEightSingleLanePerSampleDirFmt  \
+  --output-path demux-paired-end.qza
+
+
+qiime cutadapt trim-paired \
+--i-demultiplexed-sequences demux-paired-end.qza \
+--p-front-f NNNNGTGCCAGCMGCCGCGGTAA \
+--p-front-r GGACTACHVGGGTWTCTAAT \
+--p-error-rate .1 \
+--p-indels \
+--p-match-read-wildcards \
+--p-discard-untrimmed \
+--o-trimmed-sequences run_16Strimmed.qza \
+--verbose
+
+
+
+qiime demux summarize \
+    --i-data run_16Strimmed.qza \
+    --p-n 100000 \
+    --o-visualization run_16Strimmed.qzv
+
+qiime tools view run_16Strimmed.qzv
+
+
+mkdir QIIMEout
+
+qiime dada2 denoise-paired \
+--i-demultiplexed-seqs run_16Strimmed.qza \
+--p-n-threads 32 \
+--p-trunc-len-f 200 \
+--p-trunc-len-r 200 \
+--p-max-ee-f 2 \
+--p-max-ee-r 2 \
+--p-chimera-method pooled \
+--o-table /QIIMEout/table-dada2.qza \
+--o-representative-sequences /QIIMEout/rep-seqs-dada2.qza \
+--o-denoising-stats /QIIMEout/DADA2stats.qza \
+--verbose
+
+
+#This code allows us to visualise the ASV sequences kept in the dataset:
+
+qiime feature-table tabulate-seqs \
+  --i-data /QIIMEout/rep-seqs-dada2.qza \
+  --o-visualization /QIIMEout/rep-seqs-dada2.qzv
+
+
+qiime tools view /QIIMEout/rep-seqs-dada2.qzv
+
+
+
+qiime feature-table summarize \
+--i-table /QIIMEout/table-dada22.qza \
+--o-visualization /QIIMEout/table-dada2.qzv \
+--m-sample-metadata-file Metadata_16S.csv
+
+
+qiime tools view /QIIMEout/table-dada2.qzv
+
+
+#Ok we are going to assign taxonomy to our sequences: 
+
+#We’ll do that using a database called SILVA. We selected sequences that correspond to the region we amplified in our PCR: i.e. the sequences in the database have been trimmed to only include 250 bases from the region of the 16S that was sequenced in this analysis (the V4 region, bound by the 515F/806R primer pair). We’ll apply this classifier to our sequences, and we can generate a visualization of the resulting mapping from sequence to taxonomy.
+
+#We can do this using the database below:
+
+qiime feature-classifier classify-sklearn \
+  --i-classifier silva.132.V4.515.806.7_levels.classifier.qza \
+  --i-reads /QIIMEout/rep-seqs-dada22.qza \
+  --p-n-jobs 30 \
+  --o-classification /QIIMEout/taxonomy.qza
+
+
+
+#lets visualise our taxonmic assingment of our sequences!
+
+qiime metadata tabulate \
+  --m-input-file /QIIMEout/taxonomy.qza \
+  --o-visualization/QIIMEout/taxonomy.qzv
+
+
+qiime tools view /QIIMEout/taxonomy.qzv
+
+
+#lets visualise our results as a barplot:
+
+qiime taxa barplot \
+  --i-table QIIMEout/table-dada2.qza \
+  --i-taxonomy QIIMEout/taxonomy.qza \
+  --m-metadata-file Metadata_16S.csv \
+  --o-visualization QIIMEout/taxa-bar-plots.qzv
+
+qiime tools view QIIMEout/taxa-bar-plots.qzv
+
+###lets remove sequences that are Archaea,mitochondra,chloroplast,Unassigned and not assigned at the phylum level from our table and list of sequences:
+
+qiime taxa filter-table \
+  --i-table QIIMEout/table-dada2.qza  \
+  --i-taxonomy QIIMEout/taxonomy.qza \
+  --p-exclude Archaea,mitochondra,chloroplast,Unassigned \
+  --p-include D_1__ \
+  --o-filtered-table QIIMEout/table-filtered.qza
+
+
+
+qiime taxa filter-seqs \
+  --i-sequences QIIMEout/rep-seqs-dada22.qza \
+  --i-taxonomy QIIMEout/taxonomy.qza \
+  --p-exclude Archaea,mitochondra,chloroplast,Unassigned \
+  --p-include D_1__ \
+  --o-filtered-sequences QIIMEout/rep-seqs-filtered.qza
+
+
+qiime feature-table tabulate-seqs \
+  --i-data QIIMEout/rep-seqs-filtered.qza \
+  --o-visualization QIIMEout/rep-seqs-filtered.qzv
+
+qiime tools view QIIMEout/rep-seqs-filtered.qzv
+
+
+
+#lets visualise our filtered results as a boxplot:
+
+qiime taxa barplot \
+  --i-table QIIMEout/table-filtered.qza \
+  --i-taxonomy QIIMEout/taxonomy.qza \
+  --m-metadata-file Metadata_16S_2_ed.csv \
+  --o-visualization QIIMEout/filtered-taxa-bar-plots.qzv
+
+qiime tools view QIIMEout/filtered-taxa-bar-plots.qzv
+
+
+
+qiime feature-table merge-seqs \
+ --i-data QIIMEout/rep-seqs-filtered.qza \
+ --i-data QIIMEout/rep-seqs-filtered.qza \
+ --o-merged-data QIIMEout/merged_rep-seqs.qza
+
+
+qiime feature-table tabulate-seqs \
+  --i-data QIIMEout/merged_rep-seqs.qza \
+  --o-visualization QIIMEout/merged_rep-seqs.qzv
+
+
+
+# Add the following sequence at the bottom of the merged fasta file that I created from merged_rep-seqs.qzv. It will be used to root our tree in later analyses 
+
+>KT433146.1 Uncultured archaeon clone denovo4500 16S ribosomal RNA gene, partial sequence
+TACGGAGGGTCCAAGCGTTATCCGGAATCATTGGGTTTAAAGGGTGCGCAGGCGGTAGTGTAAGTCAGTGGTGAAATCTCTCGGCTCAACCGAGAAACTGCCATTGATACTGCAGTACTTGAGTACAGTTGAAGTAGGCGGAATGTGTAGTGTAGCGGTGAAATGCTTAGATATTACACAGAACACCGATAGCGAAGGCAGCTTACTAAACTGATATTGACGCTCATGCACGAAAGCGTGGGGAGCGAACAGGATTAGAAACCCGTGTAGT
+
+
+
+# Now let's align our fasta file using mafft
+
+mafft QIIMEout/merged_rep-seq.fasta > QIIMEout/merged_rep-seq-OGaligned.fasta
+
+# Now let's open the fasta file in Sublime and have a look at it
+subl QIIMEout/merged_rep-seq-OGaligned.fasta
+
+
+#We next build a tree using the software FastTree:
+
+FastTree < QIIMEout/merged_rep-seq-OGaligned.fasta > QIIMEout/16SunrootedTree.tree
+
+#### open tree visualising software (e.g. MEGA7 or Dendroscope) to visualise the tree and reroot it using the archaeal sequence. Once rerooted, remove the taxa name and branch of the outgroup. Save the tree as "16SRootedTree.tree".
+
+subl QIIMEout/16SRootedTree.tree
+
+
+####Mark's way of importing into R
+
+qiime tools export \
+  --input-path QIIMEout/table-dada2.qza  \
+  --output-path exported-table
+
+qiime tools export \
+  --input-path QIIMEout/taxonomy.qza \
+  --output-path taxonomy
+
+biom convert -i exported-table/feature-table.biom -o exported-table/16S.txt --header-key taxonomy --to-tsv
+
+
+ls
+
+
+R
+
+setwd ('yourpath')
+
+
+table<-read.csv("16S.txt",sep='\t',check.names=FALSE,skip=1)
+head(table)
+names(table)
+
+
+Taxonomy<-read.table ("taxonomy.tsv",sep='\t', header=TRUE)
+
+head(Taxonomy)
+names(Taxonomy)
+
+table$taxonomy<-with(Taxonomy,Taxon[match(table$"#OTU ID",Taxonomy$Feature.ID)])
+
+head(table)
+names(table)
+
+
+write.table(table,"16S.txt",row.names=FALSE,sep="\t")
+
+quit()
+
+
+
+libreoffice --calc 16S.txt
+
+subl 16S.txt
+subl taxonomy.tsv
+
+sed -i '1s/^/# Constructed from biom file\n/' 16S.txt
+sed -i -e 's/"//g' 16S_22.txt
+ls
+
+subl 16S.txt
+
+
+biom convert -i 16S.txt -o 16S_Taxonomy.biom --table-type "OTU table" --process-obs-metadata taxonomy --to-hdf5
+
+
+
+cd exported-table
+ls
+
+#### Files ready to be imported into R!
+
+
+
+
