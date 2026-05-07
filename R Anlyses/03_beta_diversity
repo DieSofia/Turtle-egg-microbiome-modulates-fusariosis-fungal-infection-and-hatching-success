@@ -1,0 +1,597 @@
+
+##############################################################################
+# 03_beta_diversity.R
+#
+# OBJECTIVE: Statistical models and ordinations for beta diversity (Aitchison distance via rclr) for the bacteriome (16S) and mycobiome (ITS).
+##############################################################################
+
+
+##############################################################################
+# 1. 16S – DATA PREPARATION
+##############################################################################
+# Load data
+Micro_EGG_control_clean <- readRDS("outputs/Micro_EGG_control_clean.rds")
+
+# ---- 1.1  rclr transformation + tree glomming --------------------------- #
+
+Micro_EGG_comp <- microbiome::transform(Micro_EGG_control_clean, trans = "rclr")
+Micro_EGG_comp <- speedyseq::tree_glom(Micro_EGG_comp, 0.05)
+
+
+# ---- 1.2  Compound factor variables ------------------------------------- #
+
+HS<-factor(sample_data(Micro_EGG_comp)$Stage)
+P<-factor(sample_data(Micro_EGG_comp)$FSSC2)
+
+# Fusariosis: simplified FSSC2 labels
+Fusariosis <- factor(sample_data(Micro_EGG_comp)$FSSC2,
+                     levels = c("PCR(-)/NoFSSC", "FSSC_Infected"),
+                     labels = c("Uninfected", "Infected"))
+sample_data(Micro_EGG_comp)$Fusariosis <- Fusariosis
+
+# Infection_Hatching: Stage x FSSC2 cross
+infec_hatch     <- fct_cross(HS, P)
+sample_data(Micro_EGG_comp)$infec_hatch <- infec_hatch
+
+Infection_Hatching <- factor(
+  sample_data(Micro_EGG_comp)$infec_hatch,
+  levels = c("UnhatchedEggED:PCR(-)/NoFSSC", "UnhatchedEggED:FSSC_Infected",
+             "UnhatchedEggLD:PCR(-)/NoFSSC", "UnhatchedEggLD:FSSC_Infected",
+             "HatchedEgg:PCR(-)/NoFSSC",     "HatchedEgg:FSSC_Infected"),
+  labels = c("Unhatched E.D.-Uninfected", "Unhatched E.D.-Infected",
+             "Unhatched L-D.-Uninfected", "Unhatched L-D.-Infected",
+             "Hatched-Uninfected",        "Hatched-Infected"))
+sample_data(Micro_EGG_comp)$Infection_Hatching <- Infection_Hatching
+
+head(sample_data(Micro_EGG_comp))
+
+
+# ---- 1.3  OTU matrix and metadata --------------------------------------- #
+
+otuEGG  <- abundances(Micro_EGG_comp)
+metaEGG <- meta(Micro_EGG_comp)
+
+##############################################################################
+# 2. 16S – PAIRWISE TESTS
+##############################################################################
+
+distEGG <- vegdist(t(otuEGG), method = "euclidean")
+
+# ---- 2.1  Pairwise RDAs (Stage) ----------------------------------------- #
+
+micromatrix   <- t(otuEGG)
+
+microRDAprw1 <- multiconstrained(method    = "rda",
+                                 micromatrix ~ Stage,
+                                 data      = metaEGG,
+                                 distance  = "euclidean",
+                                 add       = TRUE)
+microRDAprw1
+
+write.table(microRDAprw1, "Tables/16S_RDAPairwise.csv")
+
+
+# ---- 2.2  Pairwise RDA by Infection_Hatching ---------------------------- #
+
+microRDAprw2 <- multiconstrained(method   = "rda",
+                                 micromatrix ~ Infection_Hatching,
+                                 data     = metaEGG,
+                                 distance = "euclidean",
+                                 add      = TRUE)
+microRDAprw2
+
+write.table(microRDAprw2, "Tables/16S_RDAPairwiseInf.csv")
+
+
+# ---- 2.3  Pairwise RDA by FSSC2 ----------------------------------------- #
+
+microRDAprw3 <- multiconstrained(method   = "rda",
+                                 micromatrix ~ FSSC2,
+                                 data     = metaEGG,
+                                 distance = "euclidean",
+                                 add      = TRUE)
+microRDAprw3
+
+
+##############################################################################
+# 4. 16S – RDA MODELS
+##############################################################################
+
+# ---- 4.1  Candidate RDA models ------------------------------------------ #
+
+# Interaction model
+reggFSSCmicro  <- rda(t(otuEGG) ~ FSSC2 * Stage, data = metaEGG)
+# Additive model (used for figures 2 and 3)
+reggFSSCmicro2 <- rda(t(otuEGG) ~ FSSC2 + Stage, data = metaEGG)
+# FSSC2 only
+reggFSSCmicro3 <- rda(t(otuEGG) ~ FSSC2,         data = metaEGG)
+# Stage only
+reggFSSCmicro4 <- rda(t(otuEGG) ~ Stage,          data = metaEGG)
+
+
+# ---- 4.2  R² and permutation tests -------------------------------------- #
+
+RsquareAdj(reggFSSCmicro)$r.squared     
+RsquareAdj(reggFSSCmicro)$adj.r.squared 
+
+anova(reggFSSCmicro, permutations = 99999))
+
+RsquareAdj(reggFSSCmicro2)$r.squared   
+RsquareAdj(reggFSSCmicro2)$adj.r.squared 
+
+anova(reggFSSCmicro2, permutations = 99999))
+
+anova(reggFSSCmicro3, permutations = 99999)
+
+anova(reggFSSCmicro4, permutations = 99999)
+
+
+
+# ---- 4.3  Forward model selection --------------------------------------- #
+
+ordiR2step(reggFSSCmicro2, reggFSSCmicro)
+
+set.seed(1)
+reggFSSCmicroOrdi <- ordistep(reggFSSCmicro,
+                              permutations = how(nperm = 99999))
+
+
+screeplot(reggFSSCmicro)
+summary(reggFSSCmicro)
+
+
+##############################################################################
+# 5. 16S – BETA DISPERSION
+##############################################################################
+
+# ---- 5.1  Compute distances from single grand centroid ------------------ #
+
+metaEGG$bedista        <- rep("a", times = nrow(metaEGG))
+metaEGG$betadist1micro <- betadisper(distEGG, metaEGG$bedista,
+                                     type = "median")$distance
+
+hist(metaEGG$betadist1micro, breaks = 50)
+
+
+# ---- 5.2  Candidate GLS models for paper -------------------------------- #
+
+# Additive: Stage + FSSC2 (weights by Stage)
+Mdist2_inf_2 <- gls(betadist1micro ~ Stage + FSSC2,
+                    na.action = na.fail,
+                    data      = metaEGG,
+                    weights   = varIdent(form = ~ 1 | Stage),
+                    method    = "ML")
+
+# Stage only
+Mdist2_inf_3 <- gls(betadist1micro ~ Stage,
+                    na.action = na.fail,
+                    data      = metaEGG,
+                    weights   = varIdent(form = ~ 1 | FSSC2),
+                    method    = "ML")
+
+AIC(Mdist2_inf_2, Mdist2_inf_3)
+
+# Model diagnostics for selected model
+plot(Mdist2_inf_2, which = 1, col = 1, add.smooth = FALSE, caption = "")
+R2 <- resid(Mdist2_inf_2)
+qqnorm(R2); qqline(R2, lty = 2)
+
+
+# ---- 5.4  Model selection (dredge) -------------------------------------- #
+
+dredge(Mdist2_inf_2, extra = "adjR^2")
+
+# ---- 5.5  Post-hoc contrasts (Stage + FSSC2) ---------------------------- #
+
+summary(glht(Mdist2_inf_2, mcp(Stage = "Tukey")))
+summary(glht(Mdist2_inf_2, mcp(FSSC2 = "Tukey")))
+
+
+##############################################################################
+# 6. 16S – FIGURES
+##############################################################################
+
+# ---- 6.1  Constrained ordinations --------------------------------------- #
+
+gp.pceegmicro_rda  <- ordinate(Micro_EGG_comp, "RDA",
+                                distance = "euclidean", ~ FSSC2 * Stage)
+gp.pceegmicro_rda2 <- ordinate(Micro_EGG_comp, "RDA",
+                                distance = "euclidean", ~ FSSC2 + Stage)
+
+
+# RDA1 – additive model: Stage only (Figure 4a)
+PeggRDA2 <- plot_ordination(
+  Micro_EGG_comp, gp.pceegmicro_rda2,
+  color = "Stage") +
+  geom_point(size = 2.5) +
+  theme_light(17) +
+  scale_color_manual(values = Stage_col3,
+                     labels = c("UnhatchedEggED" = "Failed\nE.D eggs",
+                                "UnhatchedEggLD" = "Failed\nL.D eggs",
+                                "HatchedEgg"     = "Hatched eggs")) +
+  scale_linetype_manual(values = c(1, 5)) +
+  stat_ellipse() +
+  theme(axis.text   = element_text(size = 14),
+        axis.title  = element_text(size = 14),
+        legend.text = element_text(size = 14))
+
+# RDA2 – additive model: Fusariosis only (Figure 4b)
+PeggRDA3 <- plot_ordination(
+  Micro_EGG_comp, gp.pceegmicro_rda2,
+  color = "Fusariosis") +
+  geom_point(size = 2.5) +
+  theme_light(17) +
+  scale_color_manual(values = co_jo) +
+  scale_linetype_manual(values = c(1, 5)) +
+  stat_ellipse() +
+  theme(axis.text   = element_text(size = 14),
+        axis.title  = element_text(size = 14),
+        legend.text = element_text(size = 14))
+
+# RDA3 – interaction model: Stage * Fusariosis (Figure 4c)
+PeggRDA1 <- plot_ordination(
+  Micro_EGG_comp, gp.pceegmicro_rda,
+  color = "Stage", shape = "Fusariosis") +
+  geom_point(size = 2.5) +
+  theme_light(17) +
+  scale_color_manual(values = Stage_col3,
+                     labels = c("UnhatchedEggED" = "Failed\nE.D eggs",
+                                "UnhatchedEggLD" = "Failed\nL.D eggs",
+                                "HatchedEgg"     = "Hatched\neggs")) +
+  scale_shape_manual(values = c(15, 17)) +
+  scale_linetype_manual(values = c(1, 5)) +
+  stat_ellipse(aes(lty = Fusariosis), type = "t", level = 0.95) +
+  theme(axis.text   = element_text(size = 14),
+        axis.title  = element_text(size = 14),
+        legend.text = element_text(size = 14))
+
+# ---- 6.2  Beta dispersion boxplot (Figure 4d) ------------------ #
+
+my_comparisons <- list(c("UnhatchedEggLD", "UnhatchedEggED"),
+                       c("HatchedEgg",     "UnhatchedEggED"),
+                       c("HatchedEgg",     "UnhatchedEggLD"))
+
+Displot_Inf_Hatch3 <- ggplot(
+  metaEGG,
+  aes(x = Stage, y = betadist1micro)) +
+  geom_boxplot(outlier.shape = NA, aes(fill = FSSC2)) +
+  geom_jitter(colour = "black", aes(fill = FSSC2),
+              position = position_dodge(0.75), size = 1.5) +
+  theme_linedraw(17) +
+  xlab(" ") + ylab("Beta Diversity Dispersion") +
+  scale_fill_manual(labels = c("Uninfected", "Infected"), values = co_jo) +
+  scale_x_discrete(labels = c("UnhatchedEggED" = "Failed\nE.D eggs",
+                               "UnhatchedEggLD" = "Failed\nL.D eggs",
+                               "HatchedEgg"     = "Hatched\neggs")) +
+  guides(fill  = guide_legend(title    = "Fusariosis",
+                               position = "right",
+                               reverse  = FALSE,
+                               keywith  = 1, keyheight = 1)) +
+  theme(legend.title  = element_text(size = 16),
+        strip.text.x  = element_text(size = 14),
+        axis.text     = element_text(size = 12),
+        axis.title    = element_text(size = 14),
+        legend.text   = element_text(size = 14))
+
+Displot_Inf_Hatch3 <- Displot_Inf_Hatch3 +
+  geom_signif(stat = "identity",
+              data = data.frame(x          = c(0.7, 1.7, 2.7),
+                                xend       = c(1.3, 2.3, 3.3),
+                                y          = c(30,  30,  30),
+                                annotation = c("NS.", " NS. ", " NS. ")),
+              aes(x = x, xend = xend, y = y, yend = y,
+                  annotation = annotation, group = annotation)) +
+  geom_signif(comparisons        = my_comparisons,
+              map_signif_level   = TRUE,
+              y_position         = c(32, 35, 38),
+              annotation         = c("NS.", "***", "***"))
+
+
+
+
+##############################################################################
+# 7. ITS – DATA PREPARATION
+##############################################################################
+
+# ---- 7.1  rclr transformation + tree glomming --------------------------- #
+# Load data
+
+Myco_EGG_control_clean <- readRDS("outputs/Myco_EGG_control_clean.rds")
+
+Fungi_EGG_comp <- microbiome::transform(Myco_EGG_control_clean, trans = "rclr")
+Fungi_EGG_comp <- speedyseq::tree_glom(Fungi_EGG_comp, 0.05)
+
+
+# ---- 7.2  Compound factor variables ------------------------------------- #
+
+PF  <-factor(sample_data(Fungi_EGG_comp)$FSSC2)
+HSF <- factor(sample_data(Fungi_EGG_comp)$Stage)
+
+FusariosisFungi <- factor(
+  sample_data(Fungi_EGG_comp)$FSSC2,
+  levels = c("PCR(-)/NoFSSC", "FSSC_Infected"),
+  labels = c("Uninfected", "Infected"))
+sample_data(Fungi_EGG_comp)$Fusariosis <- FusariosisFungi
+
+infec_hatchFungi <- fct_cross(HSF, PF)
+sample_data(Fungi_EGG_comp)$infec_hatch <- infec_hatchFungi
+
+Infection_HatchingFungi <- factor(
+  sample_data(Fungi_EGG_comp)$infec_hatch,
+  levels = c("UnhatchedEggED:PCR(-)/NoFSSC", "UnhatchedEggED:FSSC_Infected",
+             "UnhatchedEggLD:PCR(-)/NoFSSC", "UnhatchedEggLD:FSSC_Infected",
+             "HatchedEgg:PCR(-)/NoFSSC",     "HatchedEgg:FSSC_Infected"),
+  labels = c("Unhatched E.D.-Uninfected", "Unhatched E.D.-Infected",
+             "Unhatched L-D.-Uninfected", "Unhatched L-D.-Infected",
+             "Hatched-Uninfected",        "Hatched-Infected"))
+sample_data(Fungi_EGG_comp)$Infection_Hatching <- Infection_HatchingFungi
+
+
+# ---- 7.3  OTU matrix and metadata --------------------------------------- #
+
+otuEGGfungi  <- abundances(Fungi_EGG_comp)
+metaEGGfungi <- meta(Fungi_EGG_comp)
+
+
+##############################################################################
+# 9. ITS – PAIRWISE TESTS
+##############################################################################
+
+
+# ---- 9.1  Pairwise RDAs (Stage) ----------------------------------------- #
+
+fungimatrix <- t(otuEGGfungi)
+
+fungiRDAprw1 <- multiconstrained(method   = "rda",
+                                 fungimatrix ~ Stage,
+                                 data     = metaEGGfungi,
+                                 distance = "euclidean",
+                                 add      = TRUE)
+fungiRDAprw1
+
+write.table(fungiRDAprw1, "Tables/ITS_RDAPairwise.csv")
+
+
+# ---- 9.2  Pairwise RDA by Infection_Hatching ---------------------------- #
+
+fungiRDAprw2 <- multiconstrained(method   = "rda",
+                                 fungimatrix ~ Infection_Hatching,
+                                 data     = metaEGGfungi,
+                                 distance = "euclidean",
+                                 add      = TRUE)
+fungiRDAprw2
+
+write.table(fungiRDAprw2, "Tables/ITS_RDAPairwiseInf.csv")
+
+
+# ---- 9.3  Pairwise RDA by FSSC2 ----------------------------------------- #
+
+fungiRDAprw3 <- multiconstrained(method   = "rda",
+                                 fungimatrix ~ FSSC2,
+                                 data     = metaEGGfungi,
+                                 distance = "euclidean",
+                                 add      = TRUE)
+fungiRDAprw3
+
+write.table(fungiRDAprw3, "Tables/ITS_RDAPairwiseFSSC.csv")
+##############################################################################
+# 10. ITS – RDA MODELS
+##############################################################################
+
+# ---- 10.1  Candidate RDA models ----------------------------------------- #
+
+# Interaction (used for Figure 3 – both Stage and Fusariosis)
+reggFSSCfungi  <- rda(t(otuEGGfungi) ~ FSSC2 * Stage, data = metaEGGfungi)
+# Additive (used for Figures 1 and 2)
+reggFSSCfungi2 <- rda(t(otuEGGfungi) ~ FSSC2 + Stage, data = metaEGGfungi)
+# FSSC2 only
+reggFSSCfungi3 <- rda(t(otuEGGfungi) ~ FSSC2,         data = metaEGGfungi)
+# Stage only
+reggFSSCfungi4 <- rda(t(otuEGGfungi) ~ Stage,          data = metaEGGfungi)
+
+
+# ---- 10.2  R² and permutation tests ------------------------------------- #
+
+RsquareAdj(reggFSSCfungi)$r.squared
+RsquareAdj(reggFSSCfungi)$adj.r.squared
+
+anova(reggFSSCfungi,  permutations = 99999)
+
+anova(reggFSSCfungi2, permutations = 99999)
+
+anova(reggFSSCfungi3, permutations = 99999)
+
+anova(reggFSSCfungi4, permutations = 99999)
+
+
+# ---- 10.3  Forward model selection -------------------------------------- #
+
+set.seed(1)
+fungiordi <- ordistep(reggFSSCfungi, permutations = how(nperm = 99999))
+
+screeplot(reggFSSCfungi)
+summary(reggFSSCfungi)
+
+
+##############################################################################
+# 11. ITS – BETA DISPERSION 
+##############################################################################
+
+# ---- 11.1  Compute distances from single grand centroid ----------------- #
+
+metaEGGfungi$bedistfungi  <- rep("a", times = nrow(metaEGGfungi))
+metaEGGfungi$betadist1    <- betadisper(distEGGfungi,
+                                        metaEGGfungi$bedistfungi,
+                                        type = "median")$distance
+
+hist(metaEGGfungi$betadist1, breaks = 50)
+
+
+# ---- 11.2  Candidate GLS models for paper ------------------------------- #
+
+# Additive: Stage + FSSC2 (weights by Stage)
+m1fungi <- gls(betadist1 ~ Stage + FSSC2,
+               na.action = na.fail,
+               data      = metaEGGfungi,
+               weights   = varIdent(form = ~ 1 | Stage),
+               method    = "ML")
+
+
+m2fungi <- gls(betadist1 ~ Stage,
+               na.action = na.fail,
+               data      = metaEGGfungi,
+               weights   = varIdent(form = ~ 1 | Stage),
+               method    = "ML")
+
+AIC(m1fungi, m2fungi)
+
+# Model diagnostics for selected model
+plot(m1fungi, which = 1, col = 1, add.smooth = FALSE, caption = "")
+R2fungi <- resid(m1fungi)
+qqnorm(R2fungi); qqline(R2fungi, lty = 2)
+
+
+# ---- 11.3  Model selection (dredge) ------------------------------------- #
+
+dredge(m1fungi, extra = "adjR^2")
+
+
+# ---- 11.4  Post-hoc Tukey contrasts ------------------------------------- #
+
+summary(glht(m1fungi, mcp(Stage = "Tukey")))
+summary(glht(m1fungi, mcp(FSSC2 = "Tukey")))
+
+summary(m1fungi)
+
+
+##############################################################################
+# 12. ITS – FIGURES
+##############################################################################
+
+# ---- 12.1  Constrained ordinations -------------------------------------- #
+
+gp.pceegFungi_ed2 <- ordinate(Fungi_EGG_comp, "RDA",
+                               distance = "euclidean", ~ FSSC2 * Stage)
+gp.pceegFungi_ed3 <- ordinate(Fungi_EGG_comp, "RDA",
+                               distance = "euclidean", ~ FSSC2 + Stage)
+
+
+
+# FungeggRDA2 – additive model: Stage only (Figure 4e)
+FungeggRDA2 <- plot_ordination(
+  Fungi_EGG_comp, gp.pceegFungi_ed3,
+  color = "Stage") +
+  geom_point(size = 2.5) +
+  theme_light(17) +
+  scale_color_manual(values = Stage_col3,
+                     labels = c("UnhatchedEggED" = "Unhatched\nE.D",
+                                "UnhatchedEggLD" = "Unhatched\nL.D",
+                                "HatchedEgg"     = "Hatched")) +
+  scale_linetype_manual(values = c(1, 5)) +
+  stat_ellipse() +
+  theme(axis.text   = element_text(size = 14),
+        axis.title  = element_text(size = 14),
+        legend.text = element_text(size = 14))
+
+# FungeggRDA3 – additive model: Fusariosis only (Figure 4f)
+FungeggRDA3 <- plot_ordination(
+  Fungi_EGG_comp, gp.pceegFungi_ed3,
+  color = "Fusariosis") +
+  geom_point(size = 2.5) +
+  theme_light(17) +
+  scale_color_manual(values = co_jo) +
+  scale_linetype_manual(values = c(1, 3, 5)) +
+  stat_ellipse() +
+  theme(axis.text   = element_text(size = 14),
+        axis.title  = element_text(size = 14),
+        legend.text = element_text(size = 14))
+
+
+# FungeggRDA1 – interaction model: Stage + Fusariosis (Figure 4g)
+FungeggRDA1 <- plot_ordination(
+  Fungi_EGG_comp, gp.pceegFungi_ed2,
+  color = "Stage", shape = "Fusariosis") +
+  geom_point(size = 2.5) +
+  theme_light(17) +
+  scale_color_manual(values = Stage_col3,
+                     labels = c("UnhatchedEggED" = "Failed\nE.D eggs",
+                                "UnhatchedEggLD" = "Failed\nL.D eggs",
+                                "HatchedEgg"     = "Hatched eggs")) +
+  scale_shape_manual(values = c(15, 17)) +
+  scale_linetype_manual(values = c(1, 5)) +
+  stat_ellipse(aes(lty = Fusariosis), type = "t",
+               level = 0.95, show.legend = FALSE) +
+  theme(axis.text   = element_text(size = 14),
+        axis.title  = element_text(size = 14),
+        legend.text = element_text(size = 14))
+
+# ---- 12.2  Beta dispersion boxplot (ITS- Figure 4h) -------------------------------- #
+
+
+Displot_Fungi <- ggplot(
+  metaEGGfungi,
+  aes(x = Stage, y = betadist1)) +
+  geom_boxplot(outlier.shape = NA, aes(fill = FSSC2)) +
+  geom_jitter(colour = "black", aes(fill = FSSC2),
+              position = position_dodge(0.75), size = 1.5) +
+  theme_linedraw(17) +
+  xlab(" ") + ylab("Beta Diversity Dispersion") +
+  scale_fill_manual(labels = c("Uninfected", "Infected"), values = co_jo) +
+  scale_x_discrete(labels = c("UnhatchedEggED" = "Failed\nE.D eggs",
+                               "UnhatchedEggLD" = "Failed\nL.D eggs",
+                               "HatchedEgg"     = "Hatched\neggs")) +
+  guides(fill = guide_legend(title    = "Fusariosis",
+                              position = "right",
+                              reverse  = FALSE,
+                              keywith  = 1, keyheight = 1)) +
+  theme(legend.title = element_text(size = 16),
+        strip.text.x = element_text(size = 14),
+        axis.text    = element_text(size = 12),
+        axis.title   = element_text(size = 14),
+        legend.text  = element_text(size = 14))
+
+
+Displot_Fungi <- Displot_Fungi + 
+  geom_signif(stat = "identity", data = data.frame(x = c(0.7, 1.7, 2.7), 
+    xend = c(1.3, 2.3, 3.3), y = c(30, 30, 30), annotation = c("NS.", "  NS.  ", " NS. ")),
+     aes(x = x, xend = xend, y = y, yend = y, annotation = annotation, group = annotation))
+      + geom_signif(comparisons = my_comparisons, map_signif_level=TRUE, y_position = c(32, 35, 38), annotation = c("NS.", "NS.", "NS."))
+
+
+
+# ---- 12.4  Export: combined 16S and ITS panel ----------------------------------- #
+
+
+legend1 = gtable_filter(ggplotGrob(PeggRDA1 + theme(legend.title = element_text(margin = margin(r = 20)),legend.text = element_text(margin = margin(r = 15)),legend.box="horizontal",legend.position = "bottom",legend.key.width = unit(2, "line"))), "guide-box")
+
+legend3 = gtable_filter(ggplotGrob(PeggRDA3 + theme(legend.title = element_text(margin = margin(r = 20)),legend.text = element_text(margin = margin(r = 10)),legend.box="horizontal",legend.position = "bottom",legend.key.width = unit(2, "line"))), "guide-box")
+
+png("Figures/Betadiv_disp_All_final.png",width=6200, height=4400,res=300)
+
+pushViewport(viewport(layout = grid.layout(225,100)))
+vplayout <- function(x, y) viewport(layout.pos.row = x, layout.pos.col = y)
+print(PeggRDA2+ggtitle("Bacteriome", subtitle= "(a)")+ theme(plot.title= element_text(hjust = -0.25, vjust = -0.8, size = 24), plot.subtitle=element_text(hjust = 0, vjust = -0.13, size = 16)) + theme(legend.position=""), vp = vplayout(1:102,1:20))
+print(PeggRDA3+ggtitle("", subtitle="(b)")+ theme(plot.title= element_text(hjust = -0.38, vjust = -0.8, size = 24), plot.subtitle=element_text(hjust = 0, vjust = -0.13, size = 16)) + theme(legend.position=""), vp = vplayout(1:102,21:40))
+print(PeggRDA1+ggtitle("", subtitle="(c)")+ theme(plot.title= element_text(hjust = -0.38, vjust = -0.8, size = 24), plot.subtitle=element_text(hjust = 0, vjust = -0.13, size = 16)) + theme(legend.position=""), vp = vplayout(1:102,41:60))
+print(Displot_Inf_Hatch3+ggtitle("", subtitle="(d)")+ theme(plot.title= element_text(hjust = -0.38, vjust = -0.8, size = 24), plot.subtitle=element_text(hjust = 0, vjust = -0.13, size = 16)) + theme(legend.position="none",axis.title.x =element_blank()),, vp = vplayout(1:100,61:100))
+
+
+print(FungeggRDA2+ggtitle("Mycobiome", subtitle="(e)")+ theme(plot.title= element_text(hjust = -0.32, vjust = -0.8, size = 24), plot.subtitle=element_text(hjust = 0, vjust = -0.13, size = 16)) + theme(legend.text = element_text(size = 12))+theme(legend.position=""), vp = vplayout(102:203,1:20))
+print(FungeggRDA3+ggtitle("", subtitle="(f)")+ theme(plot.title= element_text(hjust = -1.2, vjust = -3.5, size = 24), plot.subtitle=element_text(hjust = 0, vjust = -0.13, size = 16)) + theme(legend.position=""), vp = vplayout(102:203,21:40))
+print(FungeggRDA1+ggtitle("", subtitle="(g)")+ theme(plot.title= element_text(hjust = -1.2, vjust = -3.5, size = 24), plot.subtitle=element_text(hjust = 0, vjust = -0.13, size = 16))+ theme(legend.position=""), vp = vplayout(102:203,41:60))
+print(Displot_Inf_Hatch_fungi+ggtitle("", subtitle="(h)")+ theme(plot.title= element_text(hjust = -1.2, vjust = -3.5, size = 24), plot.subtitle=element_text(hjust = 0, vjust = -0.13, size = 16)) + theme(legend.position="none",axis.title.x =element_blank()),, vp = vplayout(102:203,61:100))
+
+legend1$vp = viewport(layout.pos.row = 206:210, layout.pos.col = 35:35)
+grid.draw(legend1)
+
+legend3$vp = viewport(layout.pos.row = 213:200, layout.pos.col = 75:80)
+grid.draw(legend3)
+
+
+dev.off()
+
+
+##############################################################################
+# END OF 03_beta_diversity.R
+##############################################################################
+##### To produce the plot with the nest environment (Supplementary figure) just re-run the script with the RDA file including the nest environment.
