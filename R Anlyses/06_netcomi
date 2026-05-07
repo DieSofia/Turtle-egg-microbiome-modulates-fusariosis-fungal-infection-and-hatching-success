@@ -1,0 +1,1140 @@
+# ==============================================================================
+# NETCOMI NETWORK ANALYSES
+
+# ==============================================================================
+# SECTION 1 — DATA PREPARATION
+# ==============================================================================
+
+##################### NETWORK ANALYSIS OF THE BACTERIOME AND MYCOBIOME ##################################
+
+#################################
+###NETWORK SUBSETTING UNHATCHED AND HATCHED EGGS
+######
+
+# Load data
+Micro_EGG_control_clean <- readRDS("outputs/Micro_EGG_control_clean.rds")
+
+##### BACTERIOME DATA ######
+factor(sample_data(Micro_EGG_control_clean)$Stage)
+
+###Unhatched eggs
+Micro_Unhatched_class=subset_samples(Micro_EGG_control_clean, Stage!="HatchedEgg")
+
+Micro_Unhatched_rclr <- microbiome::transform(Micro_Unhatched_class , trans="rclr")
+
+Micro_Unh_G <- Micro_Unhatched_rclr%>%tax_glom(taxrank = "Genus")
+Micro_Unh_G
+
+
+#### Hatched eggs
+Micro_Hatched_class=subset_samples(Micro_EGG_control_clean, Stage=="HatchedEgg")
+
+Micro_Hatched_rclr <- microbiome::transform(Micro_Hatched_class , trans="rclr")
+
+Micro_H_G <- Micro_Hatched_rclr%>%tax_glom(taxrank = "Genus")
+Micro_H_G
+
+
+##### MYCOBIOME DATA ######
+
+# Load data
+Myco_EGG_control_clean <- readRDS("outputs/Myco_EGG_control_clean.rds")
+
+factor(sample_data(Myco_EGG_control_clean)$Stage)
+
+ITS_Unhatched_class=subset_samples(Myco_EGG_control_clean, Stage!="HatchedEgg")
+
+ITS_Unhatched_rclr <- microbiome::transform(ITS_Unhatched_class , trans="rclr")
+
+ITS_Unh_G <- ITS_Unhatched_rclr%>%tax_glom(taxrank = "Genus")
+ITS_Unh_G
+
+
+#### Hatched eggs
+ITS_Hatched_class=subset_samples(Myco_EGG_control_clean, Stage=="HatchedEgg")
+
+ITS_Hatched_rclr <- microbiome::transform(ITS_Hatched_class , trans="rclr")
+
+ITS_H_G <- ITS_Hatched_rclr%>%tax_glom(taxrank = "Genus")
+ITS_H_G
+
+
+#### Preapere data, tax_fix, tax_top
+### Unhatched eggs
+
+MicroUn_G_fix <- microViz::tax_fix(Micro_Unh_G)
+
+topun <- microViz::tax_top(MicroUn_G_fix, by = "prev", n = 20)
+topun
+
+my_subset <- subset(otu_table(MicroUn_G_fix), rownames(otu_table(MicroUn_G_fix)) %in% topun)
+
+MicroUnh_top_20_G <- merge_phyloseq(my_subset, tax_table(MicroUn_G_fix), sample_data(MicroUn_G_fix))
+
+#### add the three taxa of interest to the data frame
+Phyloseq_Genus_Interest <- subset_taxa(Micro_Unh_G, Genus=="Family_Anaerolineaceae" | Genus=="Class_KD4-96" | Genus=="Conexibacter")
+
+Phyloseq_Genus_Interest@phy_tree <- NULL
+MicroUnh_top_20_G@phy_tree <- NULL
+
+MicroUnh_top_23_G <- merge_phyloseq(Phyloseq_Genus_Interest, MicroUnh_top_20_G)
+
+MicroUnh_top_23_G
+
+data.frame(tax_table(MicroUnh_top_23_G))$Genus
+
+### Hatcehd eggs
+
+MicroH_G_fix <- microViz::tax_fix(Micro_H_G)
+
+topH <- microViz::tax_top(MicroH_G_fix, by = "prev", n = 20)
+topH
+
+my_subset <- subset(otu_table(MicroH_G_fix), rownames(otu_table(MicroH_G_fix)) %in% topH)
+
+MicroH_top_20_G <- merge_phyloseq(my_subset, tax_table(MicroH_G_fix), sample_data(MicroH_G_fix))
+
+Phyloseq_Genus_Interest <- subset_taxa(Micro_H_G, Genus=="Family_Anaerolineaceae" | Genus=="Class_KD4-96" | Genus=="Conexibacter")
+
+Phyloseq_Genus_Interest@phy_tree <- NULL
+MicroH_top_20_G@phy_tree <- NULL
+
+MicroH_top_23_G <- merge_phyloseq(Phyloseq_Genus_Interest, MicroH_top_20_G)
+
+MicroH_top_23_G
+
+data.frame(tax_table(MicroH_top_23_G))$Genus
+
+
+#### MYCOBIOME
+
+### Prepare data
+#### Unhatched eggs
+ITSUn_G_fix <- microViz::tax_fix(ITS_Unh_G)
+
+topUn <- microViz::tax_top(ITSUn_G_fix, by = "prev", n = 20)
+topUn
+
+my_subset <- subset(t(otu_table(ITSUn_G_fix)), rownames(t(otu_table(ITSUn_G_fix))) %in% topUn)
+
+ITSUnh_top_20_G <- merge_phyloseq(my_subset, tax_table(ITSUn_G_fix), sample_data(ITSUn_G_fix))
+data.frame(tax_table(ITSUnh_top_20_G))$Genus
+
+##### Hatched eggs
+ITSH_G_fix <- microViz::tax_fix(ITS_H_G)
+
+toph <- microViz::tax_top(ITSH_G_fix, by = "prev", n = 20)
+toph
+
+my_subset <- subset(t(otu_table(ITSH_G_fix)), rownames(t(otu_table(ITSH_G_fix))) %in% toph)
+
+ITSH_top_20_G <- merge_phyloseq(my_subset, tax_table(ITSH_G_fix), sample_data(ITSH_G_fix))
+data.frame(tax_table(ITSH_top_20_G))$Genus
+
+
+#### We now have 4 phyloseq objects that we want to use for network analysis ####
+
+###BACTERIOME
+MicroUnh_top_23_G
+MicroH_top_23_G
+
+####MYCOBIOME
+ITSUnh_top_20_G
+ITSH_top_20_G
+
+#############
+#############
+#############
+###### merging data from 16S and ITS only of Unhatched eggs
+
+taxa_names(MicroUnh_top_23_G) <- data.frame(tax_table(MicroUnh_top_23_G))$Genus
+taxa_names(ITSUnh_top_20_G) <- data.frame(tax_table(ITSUnh_top_20_G))$Genus
+
+### make merged otu table
+
+sample_names(ITSUnh_top_20_G) <- sample_data(ITSUnh_top_20_G)$Featureid
+sample_names(MicroUnh_top_23_G) <- sample_data(MicroUnh_top_23_G)$Featureid.1
+
+MicroUnh_otu <- data.frame(otu_table(MicroUnh_top_23_G))
+FungiUnh_otu <- data.frame(otu_table(ITSUnh_top_20_G))
+
+MicroUnh_otu[1:5, 1:5]
+FungiUnh_otu[1:5, 1:5]
+
+names(MicroUnh_otu) <- sample_names(MicroUnh_top_23_G)
+names(FungiUnh_otu) <- sample_names(ITSUnh_top_20_G)
+
+common <- intersect(colnames(MicroUnh_otu), colnames(FungiUnh_otu))
+
+All_otu <- rbind(MicroUnh_otu[common], FungiUnh_otu[common])
+All_otu <- otu_table(All_otu, taxa_are_rows = T)
+
+##the same but with tax_table
+
+MicroUnh_tax <- data.frame(tax_table(MicroUnh_top_23_G))
+FungiUnh_tax <- data.frame(tax_table(ITSUnh_top_20_G))
+
+colnames(FungiUnh_tax)
+colnames(MicroUnh_tax)
+
+full_taxUnh <- rbind(MicroUnh_tax, FungiUnh_tax)
+full_taxUnh2 <- tax_table(full_taxUnh)
+taxa_names(full_taxUnh2) <- row.names(full_taxUnh)
+colnames(full_taxUnh2) <- c("Kingdom", "Phylum", "Class",
+"Order", "Family", "Genus", "unique")
+
+
+### make merged metadata
+
+
+metadataMicroUnh <- data.frame(sample_data(MicroUnh_top_23_G))
+metadataITSUnh <- data.frame(sample_data(ITSUnh_top_20_G))
+
+head(metadataMicroUnh)
+head(metadataITSUnh)
+
+dfList <- list(metadataMicroUnh, metadataITSUnh)
+idx <- Reduce(intersect, lapply(dfList, rownames))
+
+metadataMicroUnh[idx, ]
+
+metadataUnh <- sample_data(metadataMicroUnh[idx, ])
+rownames(metadataUnh)
+
+## merge
+
+merged_ps_unhatched <- phyloseq(metadataUnh, All_otu, full_taxUnh2)
+View(tax_table(merged_ps_unhatched))
+tail(tax_table(merged_ps_unhatched))
+
+
+################
+################
+################
+###### merging data from 16S and ITS only of Hatched eggs
+
+taxa_names(MicroH_top_23_G) <- data.frame(tax_table(MicroH_top_23_G))$Genus
+taxa_names(ITSH_top_20_G) <- data.frame(tax_table(ITSH_top_20_G))$Genus
+
+### make merged otu table
+
+sample_names(ITSH_top_20_G) <- sample_data(ITSH_top_20_G)$Featureid
+sample_names(MicroH_top_23_G) <- sample_data(MicroH_top_23_G)$Featureid.1
+
+
+MicroH_otu <- data.frame(otu_table(MicroH_top_23_G))
+FungiH_otu <- data.frame(otu_table(ITSH_top_20_G))
+
+MicroH_otu[1:5, 1:5]
+FungiH_otu[1:5, 1:5]
+
+names(MicroH_otu) <- sample_names(MicroH_top_23_G)
+names(FungiH_otu) <- sample_names(ITSH_top_20_G)
+
+common <- intersect(colnames(MicroH_otu), colnames(FungiH_otu))
+
+All_otu <- rbind(MicroH_otu[common], FungiH_otu[common])
+All_otu <- otu_table(All_otu, taxa_are_rows = T)
+
+##the same but with tax_table
+
+MicroH_tax <- data.frame(tax_table(MicroH_top_23_G))
+FungiH_tax <- data.frame(tax_table(ITSH_top_20_G))
+
+colnames(FungiH_tax)
+colnames(MicroH_tax)
+
+full_taxH <- rbind(MicroH_tax, FungiH_tax)
+full_taxH2 <- tax_table(full_taxH)
+taxa_names(full_taxH2) <- row.names(full_taxH)
+colnames(full_taxH2) <- c("Kingdom", "Phylum", "Class",
+"Order", "Family", "Genus", "unique")
+
+### make merged metadata
+
+
+metadataMicroH <- data.frame(sample_data(MicroH_top_23_G))
+metadataITSH <- data.frame(sample_data(ITSH_top_20_G))
+
+head(metadataMicroH)
+head(metadataITSH)
+
+dfList <- list(metadataMicroH, metadataITSH)
+idx <- Reduce(intersect, lapply(dfList, rownames))
+
+metadataMicroH[idx, ]
+
+metadataH <- sample_data(metadataMicroH[idx, ])
+rownames(metadataH)
+
+## merge
+
+merged_ps_Hatched <- phyloseq(metadataH, All_otu, full_taxH2)
+View(tax_table(merged_ps_Hatched))
+tail(tax_table(merged_ps_Hatched))
+
+
+############
+####### we have two data frames for doing our network
+############
+
+merged_ps_unhatched ### unhatched eggs
+
+merged_ps_Hatched ### hatched eggs
+
+
+################################################################################################################################################################################################################# Now that we have our phyloseq objects subseted by hatching status
+
+
+# ==============================================================================
+# SECTION 2 — UNHATCHED vs HATCHED EGGS (netConstruct + netAnalyze)
+# ==============================================================================
+
+### WE START WITH THE HATCHING STATUS
+
+merged_ps_unhatched ### unhatched eggs
+
+merged_ps_Hatched ### hatched eggs
+
+
+net_realPUnh <- netConstruct(merged_ps_unhatched, verbose = 0,
+measure = "spearman",
+normMethod = "none",
+zeroMethod = "none",
+sparsMethod = "threshold",
+thresh = 0.3)
+
+
+net_realPH <- netConstruct(merged_ps_Hatched, verbose = 0,
+measure = "spearman",
+normMethod = "none",
+zeroMethod = "none",
+sparsMethod = "threshold",
+thresh = 0.3)
+
+
+net_stage <- netConstruct(data = merged_ps_unhatched,
+data2 = merged_ps_Hatched,
+measure = "spearman",
+#measurePar = list(nlambda = 10,
+#rep.num = 10,
+#Rmethod = "approx"),
+normMethod = "none",
+zeroMethod = "none",
+#dissFunc = "signed",
+sparsMethod = "threshold",
+thresh = 0.3)
+
+
+props_stage <- netAnalyze(net_stage,
+centrLCC = FALSE,
+avDissIgnoreInf = TRUE,
+sPathNorm = FALSE,
+clustMethod = "cluster_fast_greedy",
+#hubPar = "eigenvector",
+hubPar = c("degree", "eigenvector"),
+#hubQuant = 0.9,
+#lnormFit = TRUE,
+normDeg = FALSE,
+normBetw = FALSE,
+normClose = FALSE,
+normEigen = FALSE)
+
+
+summary(props_stage)
+
+
+phylcol <- c("skyblue", "orchid", "pink", "orange", "lightgreen", "yellow", "purple", "turquoise", "darkgreen")
+
+
+
+# ==============================================================================
+# SECTION 3 — FINAL FIGURE: UNHATCHED vs HATCHED
+# ==============================================================================
+
+########## FINAL FIGURE NETWORK UNHATCHED AND HATCHED ################
+
+png("Figures/NetcomiSpear_20topG_final.png" , width=5500, height=4500, res=300)
+
+plot(props_stage,
+nodeColor = "cluster",
+layout = "layout_nicely",
+repulsion = 0.9,
+#nodeSize = "eigenvector",
+#title1 = "Network Top 20 Genus present in Unhatched eggs",
+showTitle = TRUE,
+cexTitle = 3,
+cexLabels = 1.5,
+shortenLabels = "intelligent",
+labelLength = 18,
+labelScale = F,
+nodeSize = "clr",
+nodeSizeSpread = 5,
+cexNodes = 3,
+colorVec = phylcol2,
+nodeTransp = 0,
+borderCol = "white",
+borderWidth = 2,
+highlightHubs = F ,
+edgeTranspLow = 0,
+rmSingles = TRUE,
+mar= c(1, 4, 3, 4),
+title1 =c("\n(a) Unhatched Eggs (n=81)"),
+title2 = c("\n(b) Hatched Eggs (n=16)"))
+
+par(fig=c(0, 1, 0, 1), oma=c(0, 0, 0, 0), mar=c(0, 0, 0, 0), new=TRUE)
+plot(0, 0, type='n', bty='n', xaxt='n', yaxt='n')
+legend(0.55, 0.8, cex = 1.7, title = "estimated correlation:",
+legend = c("+", "-"), lty = 1, lwd = 3, col = c("#009900", "red"),
+bty = "n", horiz = TRUE)
+
+
+dev.off()
+
+
+######################################################################################################################################################################
+
+
+#########################################################################################
+
+# ==============================================================================
+# SECTION 4 — SUBSETTING: UNINFECTED vs INFECTED EGGS
+# ==============================================================================
+
+############### SUBSETING UNINFECTED AND INFECTED EGGS ###################
+############## WITHIN UNHATCHED AND HATCHED EGGS #####################################
+
+factor(sample_data(Micro_EGG_control_clean)$FSSC2)
+
+factor(sample_data(Micro_EGG_control_clean)$Stage)
+
+
+###Unhatched eggs
+Micro_Unhatched_class #### subset of Unhatched eggs made before
+
+### here we subset for uninfected and infected
+######UNINFECTED
+##### BACTERIOME DATA ######
+Micro_UnhatUninf=subset_samples(Micro_Unhatched_class, FSSC2=="PCR(-)/NoFSSC")
+
+Micro_UnhatUninf_rclr <- microbiome::transform(Micro_UnhatUninf , trans="rclr")
+
+Micro_UnhatUninf_G <- Micro_UnhatUninf_rclr%>%tax_glom(taxrank = "Genus")
+Micro_UnhatUninf_G
+
+####### MYCOBIOME DATA #######
+
+ITS_Unhatched_class
+
+ITS_UnhatUninf=subset_samples(ITS_Unhatched_class, FSSC2=="PCR(-)/NoFSSC")
+
+ITS_UnhatUninf_rclr <- microbiome::transform(ITS_UnhatUninf , trans="rclr")
+
+ITS_UnhatUninf_G <- ITS_UnhatUninf_rclr%>%tax_glom(taxrank = "Genus")
+ITS_UnhatUninf_G
+
+############## Preparing the data to merge it together
+
+###bacteriome
+
+MicroUnhatUninf_G_fix <- microViz::tax_fix(Micro_UnhatUninf_G)
+
+topun <- microViz::tax_top(MicroUnhatUninf_G_fix, by = "prev", n = 20)
+topun
+
+
+my_subset <- subset(otu_table(MicroUnhatUninf_G_fix), rownames(otu_table(MicroUnhatUninf_G_fix)) %in% topun)
+
+MicroUnhatUninf_top_20_G <- merge_phyloseq(my_subset, tax_table(MicroUnhatUninf_G_fix), sample_data(MicroUnhatUninf_G_fix))
+
+
+Phyloseq_Genus_Interest <- subset_taxa(MicroUnhatUninf_G_fix, Genus=="Family_Anaerolineaceae" | Genus=="Class_KD4-96" | Genus=="Conexibacter")
+
+Phyloseq_Genus_Interest@phy_tree <- NULL
+MicroUnhatUninf_top_20_G@phy_tree <- NULL
+
+MicroUnhatUninf_top_23_G <- merge_phyloseq(Phyloseq_Genus_Interest, MicroUnhatUninf_top_20_G)
+
+MicroUnhatUninf_top_23_G
+
+data.frame(tax_table(MicroUnhatUninf_top_23_G))$Genus
+
+
+### mycobiome
+
+ITSUnhatUninf_G_fix <- microViz::tax_fix(ITS_UnhatUninf_G)
+
+top <- microViz::tax_top(ITSUnhatUninf_G_fix, by = "prev", n = 20)
+top
+
+my_subset <- subset(t(otu_table(ITSUnhatUninf_G_fix)), rownames(t(otu_table(ITSUnhatUninf_G_fix))) %in% top)
+
+ITS_UnhatUninf_top_20_G <- merge_phyloseq(my_subset, tax_table(ITSUnhatUninf_G_fix), sample_data(ITSUnhatUninf_G_fix))
+data.frame(tax_table(ITS_UnhatUninf_top_20_G))$Genus
+
+#########
+### two data sets for unhatched eggs uninfected, one with microbes and other with fungi, now we are going to merge this data into one object.
+
+MicroUnhatUninf_top_23_G
+ITS_UnhatUninf_top_20_G
+
+
+###### merging data from 16S and ITS only of UNINFECTED eggs
+
+taxa_names(MicroUnhatUninf_top_23_G) <- data.frame(tax_table(MicroUnhatUninf_top_23_G))$Genus
+taxa_names(ITS_UnhatUninf_top_20_G
+) <- data.frame(tax_table(ITS_UnhatUninf_top_20_G
+))$Genus
+
+### make merged otu table
+
+sample_names(ITS_UnhatUninf_top_20_G
+) <- sample_data(ITS_UnhatUninf_top_20_G
+)$Featureid
+sample_names(MicroUnhatUninf_top_23_G) <- sample_data(MicroUnhatUninf_top_23_G)$Featureid.1
+
+
+MicroUnhatUninf_otu <- data.frame(otu_table(MicroUnhatUninf_top_23_G))
+FungiUnhatUninf_otu <- data.frame(otu_table(ITS_UnhatUninf_top_20_G
+))
+
+MicroUnhatUninf_otu[1:5, 1:5]
+FungiUnhatUninf_otu[1:5, 1:5]
+
+names(MicroUnhatUninf_otu) <- sample_names(MicroUnhatUninf_top_23_G)
+names(FungiUnhatUninf_otu) <- sample_names(ITS_UnhatUninf_top_20_G
+)
+
+common <- intersect(colnames(MicroUnhatUninf_otu), colnames(FungiUnhatUninf_otu))
+
+All_otu <- rbind(MicroUnhatUninf_otu[common], FungiUnhatUninf_otu[common])
+All_otu <- otu_table(All_otu, taxa_are_rows = T)
+
+##the same but with tax_table
+
+MicroUnhatUninf_tax <- data.frame(tax_table(MicroUnhatUninf_top_23_G))
+FungiUnhatUninf_tax <- data.frame(tax_table(ITS_UnhatUninf_top_20_G
+))
+
+colnames(FungiUnhatUninf_tax)
+colnames(MicroUnhatUninf_tax)
+
+full_taxUnhatUninf <- rbind(MicroUnhatUninf_tax, FungiUnhatUninf_tax)
+full_taxUnhatUninf2 <- tax_table(full_taxUnhatUninf)
+taxa_names(full_taxUnhatUninf2) <- row.names(full_taxUnhatUninf)
+colnames(full_taxUnhatUninf2) <- c("Kingdom", "Phylum", "Class",
+"Order", "Family", "Genus", "unique")
+
+
+### make merged metadata
+
+metadataMicroUnhatUninf <- data.frame(sample_data(MicroUnhatUninf_top_23_G))
+metadataITSUnhatUninf <- data.frame(sample_data(ITS_UnhatUninf_top_20_G
+))
+
+head(metadataMicroUnhatUninf)
+head(metadataITSUnhatUninf)
+
+dfList <- list(metadataMicroUnhatUninf, metadataITSUnhatUninf)
+idx <- Reduce(intersect, lapply(dfList, rownames))
+
+metadataMicroUnhatUninf[idx, ]
+
+metadataUnhatUninf <- sample_data(metadataMicroUnhatUninf[idx, ])
+rownames(metadataUnhatUninf)
+
+## merge
+
+merged_ps_UnhatUninf <- phyloseq(metadataUnhatUninf, All_otu, full_taxUnhatUninf2)
+View(tax_table(merged_ps_UnhatUninf))
+tail(tax_table(merged_ps_UnhatUninf))
+
+####object for unhatched unifected eggs
+merged_ps_UnhatUninf
+
+#########################
+##### now the data with infected eggs (still unhatched)
+#######INFECTED
+
+##### BACTERIOME DATA ######
+
+Micro_UnhatInf=subset_samples(Micro_Unhatched_class, FSSC2=="FSSC_Infected")
+
+Micro_UnhatInf_rclr <- microbiome::transform(Micro_UnhatInf , trans="rclr")
+
+Micro_UnhatInf_G <- Micro_UnhatInf_rclr%>%tax_glom(taxrank = "Genus")
+Micro_UnhatInf_G
+
+####### MYCOBIOME DATA #######
+
+ITS_UnhatInf=subset_samples(ITS_Unhatched_class, FSSC2=="FSSC_Infected")
+
+ITS_UnhatInf_rclr <- microbiome::transform(ITS_UnhatInf , trans="rclr")
+
+ITS_UnhatInf_G <- ITS_UnhatInf_rclr%>%tax_glom(taxrank = "Genus")
+ITS_UnhatInf_G
+
+############## Preparing the data to merge it together
+
+###bacteriome
+
+MicroUnhatInf_G_fix <- microViz::tax_fix(Micro_UnhatInf_G)
+
+topun <- microViz::tax_top(MicroUnhatInf_G_fix, by = "prev", n = 20)
+topun
+
+my_subset <- subset(otu_table(MicroUnhatInf_G_fix), rownames(otu_table(MicroUnhatInf_G_fix)) %in% topun)
+
+MicroUnhatInf_top_20_G <- merge_phyloseq(my_subset, tax_table(MicroUnhatInf_G_fix), sample_data(MicroUnhatInf_G_fix))
+
+
+Phyloseq_Genus_Interest <- subset_taxa(MicroUnhatInf_G_fix, Genus=="Family_Anaerolineaceae" | Genus=="Class_KD4-96" | Genus=="Conexibacter")
+
+Phyloseq_Genus_Interest@phy_tree <- NULL
+MicroUnhatInf_top_20_G@phy_tree <- NULL
+
+MicroUnhatInf_top_23_G <- merge_phyloseq(Phyloseq_Genus_Interest, MicroUnhatInf_top_20_G)
+
+MicroUnhatInf_top_23_G
+
+data.frame(tax_table(MicroUnhatInf_top_23_G))$Genus
+
+### mycobiome
+
+ITSUnhatInf_G_fix <- microViz::tax_fix(ITS_UnhatInf_G)
+
+top <- microViz::tax_top(ITSUnhatInf_G_fix, by = "prev", n = 20)
+top
+
+my_subset <- subset(t(otu_table(ITSUnhatInf_G_fix)), rownames(t(otu_table(ITSUnhatInf_G_fix))) %in% top)
+
+ITS_UnhatInf_top_20_G <- merge_phyloseq(my_subset, tax_table(ITSUnhatInf_G_fix), sample_data(ITSUnhatInf_G_fix))
+data.frame(tax_table(ITS_UnhatInf_top_20_G))$Genus
+
+#########
+### two data sets for unhatched eggs uninfected, one with microbes and other with fungi, now we are going to merge this data into one object.
+
+MicroUnhatInf_top_23_G
+ITS_UnhatInf_top_20_G
+
+taxa_names(MicroUnhatInf_top_23_G) <- data.frame(tax_table(MicroUnhatInf_top_23_G))$Genus
+taxa_names(ITS_UnhatInf_top_20_G) <- data.frame(tax_table(ITS_UnhatInf_top_20_G))$Genus
+
+### make merged otu table
+
+sample_names(ITS_UnhatInf_top_20_G) <- sample_data(ITS_UnhatInf_top_20_G)$Featureid
+sample_names(MicroUnhatInf_top_23_G) <- sample_data(MicroUnhatInf_top_23_G)$Featureid.1
+
+MicroUnhInf_otu <- data.frame(otu_table(MicroUnhatInf_top_23_G))
+FungiUnhInf_otu <- data.frame(otu_table(ITS_UnhatInf_top_20_G))
+
+MicroUnhInf_otu[1:5, 1:5]
+FungiUnhInf_otu[1:5, 1:5]
+
+names(MicroUnhInf_otu) <- sample_names(MicroUnhatInf_top_23_G)
+names(FungiUnhInf_otu) <- sample_names(ITS_UnhatInf_top_20_G)
+
+common <- intersect(colnames(MicroUnhInf_otu), colnames(FungiUnhInf_otu))
+
+All_otuUnhInf <- rbind(MicroUnhInf_otu[common], FungiUnhInf_otu[common])
+All_otuUnhInf <- otu_table(All_otuUnhInf, taxa_are_rows = T)
+
+##the same but with tax_table
+
+MicroUnhInf_tax <- data.frame(tax_table(MicroUnhatInf_top_23_G))
+FungiUnhInf_tax <- data.frame(tax_table(ITS_UnhatInf_top_20_G))
+
+colnames(FungiUnhInf_tax)
+colnames(MicroUnhInf_tax)
+
+full_taxInf <- rbind(MicroUnhInf_tax, FungiUnhInf_tax)
+full_taxInf2 <- tax_table(full_taxInf)
+taxa_names(full_taxInf2) <- row.names(full_taxInf)
+colnames(full_taxInf2) <- c("Kingdom", "Phylum", "Class",
+"Order", "Family", "Genus", "unique")
+
+### make merged metadata
+
+
+metadataMicroUnhInf <- data.frame(sample_data(MicroUnhatInf_top_23_G))
+metadataITS_Unhinf <- data.frame(sample_data(ITS_UnhatInf_top_20_G))
+
+head(metadataMicroUnhInf)
+head(metadataITS_Unhinf)
+
+dfList <- list(metadataMicroUnhInf, metadataITS_Unhinf)
+idx <- Reduce(intersect, lapply(dfList, rownames))
+
+metadataMicroUnhInf[idx, ]
+
+metadataInf <- sample_data(metadataMicroUnhInf[idx, ])
+rownames(metadataInf)
+
+## merge
+
+merged_ps_UnhInf <- phyloseq(metadataInf, All_otuUnhInf, full_taxInf2)
+View(tax_table(merged_ps_UnhInf))
+tail(tax_table(merged_ps_UnhInf))
+
+
+#############
+
+==============================================================================
+# SECTION 5 — NETWORK: UNHATCHED UNINFECTED vs INFECTED
+# ==============================================================================
+
+###### these are the two objetcs for my network between uninfected and infected unhatched eggs
+
+merged_ps_UnhatUninf
+
+merged_ps_UnhInf
+
+
+net_UnhatchInfection <- netConstruct(data = merged_ps_UnhatUninf,
+data2 = merged_ps_UnhInf,
+measure = "spearman",
+#measurePar = list(nlambda = 10,
+#rep.num = 10,
+#Rmethod = "approx"),
+normMethod = "none",
+zeroMethod = "none",
+#dissFunc = "signed",
+sparsMethod = "threshold",
+thresh = 0.3)
+
+props1 <- netAnalyze(net_UnhatchInfection,
+centrLCC = FALSE,
+avDissIgnoreInf = TRUE,
+sPathNorm = FALSE,
+clustMethod = "cluster_fast_greedy",
+#hubPar = "eigenvector",
+hubPar = c("degree", "eigenvector"),
+#hubQuant = 0.9,
+#lnormFit = TRUE,
+normDeg = FALSE,
+normBetw = FALSE,
+normClose = FALSE,
+normEigen = FALSE)
+
+summary(props1)
+
+netAnalyze(net_UnhatchInfection,
+centrLCC = FALSE,
+avDissIgnoreInf = TRUE,
+sPathNorm = FALSE,
+clustMethod = "cluster_fast_greedy",
+#hubPar = "eigenvector",
+hubPar = c("degree", "eigenvector"),
+#hubQuant = 0.9,
+#lnormFit = TRUE,
+normDeg = FALSE,
+normBetw = FALSE,
+normClose = FALSE,
+normEigen = FALSE)
+
+
+taxtab1 <- merged_ps_UnhInf@tax_table@.Data
+
+merged_ps_UnhInf@tax_table@.Data <- taxtab1
+rownames(merged_ps_UnhInf@tax_table@.Data) <- taxtab1[, "Genus"]
+
+phylaUnh <- as.factor(taxtab1[, "Phylum"])
+names(phylaUnh) <- taxtab1[, "Genus"]
+phylcol2 <- c(c("skyblue", "orchid", "pink", "orange", "lightgreen", "yellow", "lightgrey", "magenta", "purple", "turquoise", "darkgreen"))
+
+# ==============================================================================
+# SECTION 6 — FINAL FIGURE: UNHATCHED UNINFECTED vs INFECTED
+# ==============================================================================
+
+########## FINAL FIGURE UNHATCHED EGGS UNINFECTED-INFECTED ######
+
+png("Figures/NetcomiSpearInf_Unh_20topG_2ndApproachFinal.png" , width=5300, height=4500, res=300)
+
+plot(props1,
+nodeColor = "cluster",
+layout = "layout_with_graphopt",
+repulsion = 0.95,
+#nodeSize = "eigenvector",
+#title1 = "Network Top 20 Genus present in Unhatched eggs",
+showTitle = TRUE,
+cexTitle = 2,
+cexLabels = 1.4,
+shortenLabels = "intelligent",
+labelLength = 18,
+labelScale = F,
+nodeSize = "clr",
+nodeSizeSpread = 4,
+cexNodes = 2,
+colorVec = phylcol2,
+nodeTransp = 0,
+borderCol = "white",
+borderWidth = 2,
+highlightHubs = F ,
+edgeTranspLow = 0,
+rmSingles = TRUE,
+mar= c(1, 4, 2, 4),
+groupNames = c("\n Uninfected Eggs (n=30)", "\n FSSC infected Eggs (n=51)"))
+
+
+dev.off()
+# ==============================================================================
+# SECTION 7 — NETWORK: HATCHED EGGS (UNINFECTED vs INFECTED)
+# ==============================================================================
+
+############### NOW WITH HATCHED EGGS
+#########
+
+Micro_Hatched_class ###subset of hatched eggs made at the beginning
+
+######UNINFECTED
+##### BACTERIOME DATA ######
+Micro_HatchUninf=subset_samples(Micro_Hatched_class, FSSC2=="PCR(-)/NoFSSC")
+
+Micro_HatchUninf_rclr <- microbiome::transform(Micro_HatchUninf , trans="rclr")
+
+Micro_HatchUninf_G <- Micro_HatchUninf_rclr%>%tax_glom(taxrank = "Genus")
+Micro_HatchUninf_G
+
+
+####### MYCOBIOME DATA #######
+
+factor(sample_data(ITS_Hatched_class)$FSSC2)
+
+ITS_HatchUninf=subset_samples(ITS_Hatched_class, FSSC2=="PCR(-)/NoFSSC")
+
+ITS_HatchUninf_rclr <- microbiome::transform(ITS_HatchUninf , trans="rclr")
+
+ITS_HatchUninf_G <- ITS_HatchUninf_rclr%>%tax_glom(taxrank = "Genus")
+ITS_HatchUninf_G
+
+############## Preparing the data to merge it together
+
+###bacteriome
+MicroHatchUninf_G_fix <- microViz::tax_fix(Micro_HatchUninf_G)
+
+topun <- microViz::tax_top(MicroHatchUninf_G_fix, by = "prev", n = 20)
+topun
+
+my_subset <- subset(otu_table(MicroHatchUninf_G_fix), rownames(otu_table(MicroHatchUninf_G_fix)) %in% topun)
+
+MicroHatchUninf_top_20_G <- merge_phyloseq(my_subset, tax_table(MicroHatchUninf_G_fix), sample_data(MicroHatchUninf_G_fix))
+
+
+Phyloseq_Genus_Interest <- subset_taxa(MicroHatchUninf_G_fix, Genus=="Family_Anaerolineaceae" | Genus=="Class_KD4-96" | Genus=="Conexibacter")
+
+Phyloseq_Genus_Interest@phy_tree <- NULL
+MicroHatchUninf_top_20_G@phy_tree <- NULL
+
+MicroHatchUninf_top_23_G <- merge_phyloseq(Phyloseq_Genus_Interest, MicroHatchUninf_top_20_G)
+
+MicroHatchUninf_top_23_G
+
+data.frame(tax_table(MicroHatchUninf_top_23_G))$Genus
+
+
+### mycobiome
+ITSHatchUninf_G_fix <- microViz::tax_fix(ITS_HatchUninf_G)
+
+top <- microViz::tax_top(ITSHatchUninf_G_fix, by = "prev", n = 20)
+top
+
+my_subset <- subset(t(otu_table(ITSHatchUninf_G_fix)), rownames(t(otu_table(ITSHatchUninf_G_fix))) %in% top)
+
+ITS_HatchUninf_top_20_G <- merge_phyloseq(my_subset, tax_table(ITSHatchUninf_G_fix), sample_data(ITSHatchUninf_G_fix))
+data.frame(tax_table(ITS_HatchUninf_top_20_G))$Genus
+
+#########
+### two data sets for hatched eggs uninfected, one with microbes and other with fungi, now we are going to merge this data into one object.
+
+MicroHatchUninf_top_23_G
+ITS_HatchUninf_top_20_G
+
+###### merging data from 16S and ITS only of UNINFECTED eggs
+
+taxa_names(MicroHatchUninf_top_23_G) <- data.frame(tax_table(MicroHatchUninf_top_23_G))$Genus
+taxa_names(ITS_HatchUninf_top_20_G
+) <- data.frame(tax_table(ITS_HatchUninf_top_20_G
+))$Genus
+
+### make merged otu table
+
+sample_names(ITS_HatchUninf_top_20_G
+) <- sample_data(ITS_HatchUninf_top_20_G
+)$Featureid
+sample_names(MicroHatchUninf_top_23_G) <- sample_data(MicroHatchUninf_top_23_G)$Featureid.1
+
+
+MicroHatchUninf_otu <- data.frame(otu_table(MicroHatchUninf_top_23_G))
+FungiHatchUninf_otu <- data.frame(otu_table(ITS_HatchUninf_top_20_G
+))
+
+MicroHatchUninf_otu[1:5, 1:5]
+FungiHatchUninf_otu[1:5, 1:5]
+
+names(MicroHatchUninf_otu) <- sample_names(MicroHatchUninf_top_23_G)
+names(FungiHatchUninf_otu) <- sample_names(ITS_HatchUninf_top_20_G
+)
+
+common <- intersect(colnames(MicroHatchUninf_otu), colnames(FungiHatchUninf_otu))
+
+All_otu <- rbind(MicroHatchUninf_otu[common], FungiHatchUninf_otu[common])
+All_otu <- otu_table(All_otu, taxa_are_rows = T)
+
+##the same but with tax_table
+
+MicroHatchUninf_tax <- data.frame(tax_table(MicroHatchUninf_top_23_G))
+FungiHatchUninf_tax <- data.frame(tax_table(ITS_HatchUninf_top_20_G
+))
+
+colnames(FungiHatchUninf_tax)
+colnames(MicroHatchUninf_tax)
+
+full_taxHatchUninf <- rbind(MicroHatchUninf_tax, FungiHatchUninf_tax)
+full_taxHatchUninf2 <- tax_table(full_taxHatchUninf)
+taxa_names(full_taxHatchUninf2) <- row.names(full_taxHatchUninf)
+colnames(full_taxHatchUninf2) <- c("Kingdom", "Phylum", "Class",
+"Order", "Family", "Genus", "unique")
+
+
+### make merged metadata
+
+metadataMicroHatchUninf <- data.frame(sample_data(MicroHatchUninf_top_23_G))
+metadataITSHatchUninf <- data.frame(sample_data(ITS_HatchUninf_top_20_G
+))
+
+head(metadataMicroHatchUninf)
+head(metadataITSHatchUninf)
+
+dfList <- list(metadataMicroHatchUninf, metadataITSHatchUninf)
+idx <- Reduce(intersect, lapply(dfList, rownames))
+
+metadataMicroHatchUninf[idx, ]
+
+metadataHatchUninf <- sample_data(metadataMicroHatchUninf[idx, ])
+rownames(metadataHatchUninf)
+
+## merge
+
+merged_ps_HatchUninf <- phyloseq(metadataHatchUninf, All_otu, full_taxHatchUninf2)
+View(tax_table(merged_ps_HatchUninf))
+tail(tax_table(merged_ps_HatchUninf))
+
+####object for hatched unifected eggs
+merged_ps_HatchUninf
+
+##### now the data with infected eggs (still hatched)
+#######INFECTED
+
+##### BACTERIOME DATA ######
+
+Micro_HatchInf=subset_samples(Micro_Hatched_class, FSSC2=="FSSC_Infected")
+
+Micro_HatchInf_rclr <- microbiome::transform(Micro_HatchInf , trans="rclr")
+
+Micro_HatchInf_G <- Micro_HatchInf_rclr%>%tax_glom(taxrank = "Genus")
+Micro_HatchInf_G
+
+
+####### MYCOBIOME DATA #######
+
+ITS_HatchInf=subset_samples(ITS_Hatched_class, FSSC2=="FSSC_Infected")
+
+ITS_HatchInf_rclr <- microbiome::transform(ITS_HatchInf , trans="rclr")
+
+ITS_HatchInf_G <- ITS_HatchInf_rclr%>%tax_glom(taxrank = "Genus")
+ITS_HatchInf_G
+
+
+############## Preparing the data to merge it together
+###bacteriome
+MicroHatchInf_G_fix <- microViz::tax_fix(Micro_HatchInf_G)
+
+topun <- microViz::tax_top(MicroHatchInf_G_fix, by = "prev", n = 20)
+topun
+
+my_subset <- subset(otu_table(MicroHatchInf_G_fix), rownames(otu_table(MicroHatchInf_G_fix)) %in% topun)
+
+MicroHatchInf_top_20_G <- merge_phyloseq(my_subset, tax_table(MicroHatchInf_G_fix), sample_data(MicroHatchInf_G_fix))
+
+
+Phyloseq_Genus_Interest <- subset_taxa(MicroHatchInf_G_fix, Genus=="Family_Anaerolineaceae" | Genus=="Class_KD4-96" | Genus=="Conexibacter")
+
+Phyloseq_Genus_Interest@phy_tree <- NULL
+MicroHatchInf_top_20_G@phy_tree <- NULL
+
+MicroHatchInf_top_23_G <- merge_phyloseq(Phyloseq_Genus_Interest, MicroHatchInf_top_20_G)
+
+MicroHatchInf_top_23_G
+
+data.frame(tax_table(MicroHatchInf_top_23_G))$Genus
+
+
+### mycobiome
+ITSHatchInf_G_fix <- microViz::tax_fix(ITS_HatchInf_G)
+
+top <- microViz::tax_top(ITSHatchInf_G_fix, by = "prev", n = 20)
+top
+
+my_subset <- subset(t(otu_table(ITSHatchInf_G_fix)), rownames(t(otu_table(ITSHatchInf_G_fix))) %in% top)
+
+ITS_HatchInf_top_20_G <- merge_phyloseq(my_subset, tax_table(ITSHatchInf_G_fix), sample_data(ITSHatchInf_G_fix))
+data.frame(tax_table(ITS_HatchInf_top_20_G))$Genus
+
+#########
+### two data sets for unhatched eggs uninfected, one with microbes and other with fungi, now we are going to merge this data into one object.
+
+MicroHatchInf_top_23_G
+ITS_HatchInf_top_20_G
+
+
+taxa_names(MicroHatchInf_top_23_G) <- data.frame(tax_table(MicroHatchInf_top_23_G))$Genus
+taxa_names(ITS_HatchInf_top_20_G) <- data.frame(tax_table(ITS_HatchInf_top_20_G))$Genus
+
+### make merged otu table
+
+sample_names(ITS_HatchInf_top_20_G) <- sample_data(ITS_HatchInf_top_20_G)$Featureid
+sample_names(MicroHatchInf_top_23_G) <- sample_data(MicroHatchInf_top_23_G)$Featureid.1
+
+
+MicroHatchInf_otu <- data.frame(otu_table(MicroHatchInf_top_23_G))
+FungiHatchInf_otu <- data.frame(otu_table(ITS_HatchInf_top_20_G))
+
+MicroHatchInf_otu[1:5, 1:5]
+FungiHatchInf_otu[1:5, 1:5]
+
+names(MicroHatchInf_otu) <- sample_names(MicroHatchInf_top_23_G)
+names(FungiHatchInf_otu) <- sample_names(ITS_HatchInf_top_20_G)
+
+common <- intersect(colnames(MicroHatchInf_otu), colnames(FungiHatchInf_otu))
+
+All_otuHatchInf <- rbind(MicroHatchInf_otu[common], FungiHatchInf_otu[common])
+All_otuHatchInf <- otu_table(All_otuHatchInf, taxa_are_rows = T)
+
+##the same but with tax_table
+
+MicroHatchInf_tax <- data.frame(tax_table(MicroHatchInf_top_23_G))
+FungiHatchInf_tax <- data.frame(tax_table(ITS_HatchInf_top_20_G))
+
+colnames(FungiHatchInf_tax)
+colnames(MicroHatchInf_tax)
+
+full_taxHatchInf <- rbind(MicroHatchInf_tax, FungiHatchInf_tax)
+full_taxHatchInf2 <- tax_table(full_taxHatchInf)
+taxa_names(full_taxHatchInf2) <- row.names(full_taxHatchInf)
+colnames(full_taxHatchInf2) <- c("Kingdom", "Phylum", "Class",
+"Order", "Family", "Genus", "unique")
+
+### make merged metadata
+metadataMicroHatchInf <- data.frame(sample_data(MicroHatchInf_top_23_G))
+metadataITS_Hatchinf <- data.frame(sample_data(ITS_HatchInf_top_20_G))
+
+head(metadataMicroHatchInf)
+head(metadataITS_Hatchinf)
+
+dfList <- list(metadataMicroHatchInf, metadataITS_Hatchinf)
+idx <- Reduce(intersect, lapply(dfList, rownames))
+
+metadataMicroHatchInf[idx, ]
+
+metadataHatchInf <- sample_data(metadataMicroHatchInf[idx, ])
+rownames(metadataHatchInf)
+
+## merge
+
+merged_ps_HatchInf <- phyloseq(metadataHatchInf, All_otuHatchInf, full_taxHatchInf2)
+View(tax_table(merged_ps_HatchInf))
+tail(tax_table(merged_ps_HatchInf))
+
+
+#############
+
+###### these are the two objetcs for my network between uninfected and infected unhatched eggs
+
+merged_ps_HatchUninf
+
+merged_ps_HatchInf
+
+
+net_HatchInfection <- netConstruct(data = merged_ps_HatchUninf,
+data2 = merged_ps_HatchInf,
+measure = "spearman",
+#measurePar = list(nlambda = 10,
+#rep.num = 10,
+#Rmethod = "approx"),
+normMethod = "none",
+zeroMethod = "none",
+sparsMethod = "threshold",
+thresh = 0.3)
+
+props2 <- netAnalyze(net_HatchInfection,
+centrLCC = FALSE,
+avDissIgnoreInf = TRUE,
+sPathNorm = FALSE,
+clustMethod = "cluster_fast_greedy",
+#hubPar = "eigenvector",
+hubPar = c("degree", "eigenvector"),
+#hubQuant = 0.9,
+#lnormFit = TRUE,
+normDeg = FALSE,
+normBetw = FALSE,
+normClose = FALSE,
+normEigen = FALSE)
+
+
+summary(props2)
+
+
+comp_hatchedInfection <- netCompare(props2,
+permTest = FALSE,
+verbose = FALSE)
+
+summary(comp_hatchedInfection,
+groupNames = c("Uninfected", "Infected"),
+showCentr = c("degree", "between"),
+numbNodes = 5)
+
+
+taxtab <- merged_ps_HatchUninf@tax_table@.Data
+
+merged_ps_HatchUninf@tax_table@.Data <- taxtab
+rownames(merged_ps_HatchUninf@tax_table@.Data) <- taxtab[, "Genus"]
+
+phyla <- as.factor(taxtab[, "Phylum"])
+names(phyla) <- taxtab[, "Genus"]
+phylcol <- c("skyblue", "orchid", "pink", "orange", "lightgreen", "yellow", "lightgrey", "magenta", "turquoise", "darkgreen")
+
+
+###### FINAL PLOT FOR THE NETWORK OF HATCHED EGGS INFECTED-UNINFECTED
+
+png("Figures/NetcomiSpearInf_Hatched_20topG_2ndApproach_final.png" , width=5500, height=4500, res=300)
+
+plot(props2,
+nodeColor = "cluster",
+layout = "layout_with_graphopt",
+repulsion = 0.95,
+#nodeSize = "eigenvector",
+title1 = "Network Top 20 Genus present in Unhatched eggs",
+showTitle = TRUE,
+cexTitle = 2,
+cexLabels = 1.5,
+shortenLabels = "intelligent",
+labelLength = 18,
+labelScale = F,
+nodeSize = "clr",
+nodeSizeSpread = 4,
+cexNodes = 2,
+colorVec = phylcol,
+nodeTransp = 0,
+borderCol = "white",
+borderWidth = 2,
+highlightHubs = F ,
+edgeTranspLow = 0,
+rmSingles = TRUE,
+mar= c(1, 4, 2, 4),
+groupNames = c("\n Uninfected Eggs (n=11)", "\n FSSC infected Eggs (n=5)"))
+
+dev.off()
+
+##############################################################################
+# END OF 06_netcomi.R
+##############################################################################
