@@ -1,0 +1,129 @@
+# =============================================================================
+# 00_setup.R
+# Project: Turtle egg microbiome modulates fusariosis fungal infection
+#          and hatching success
+# Authors: Ana Sofia Carranco
+# Last updated: 2025
+#
+# PURPOSE: Load all required packages and define shared colour palettes.
+#          Source this file at the top of every other script with:
+#            source("R/00_setup.R")
+#
+# PACKAGES: Install all dependencies once with:
+#   install.packages(c(
+#     "BiocManager", "tidyverse", "vegan", "ggplot2", "ggpubr",
+#     "ggrepel", "ggnetwork", "ggsignif", "ggeffects",
+#     "lme4", "nlme", "glmmTMB", "MuMIn", "optimx",
+#     "car", "coin", "multcomp", "rstatix",
+#     "MASS", "cluster", "compositions",
+#     "plyr", "dplyr", "data.table", "stringr",
+#     "grid", "gtable", "lemon",
+#     "Rcpp", "RcppGSL", "RcppEigen",
+#     "wesanderson"
+#   ))
+#   BiocManager::install(c(
+#     "phyloseq", "microbiome", "decontam"
+#   ))
+# =============================================================================
+
+# --- Core Bioconductor -------------------------------------------------------
+library(BiocManager)
+library(phyloseq)
+library(microbiome)
+library(decontam)
+
+# --- Data wrangling ----------------------------------------------------------
+library(plyr)          # load plyr BEFORE dplyr to avoid masking conflicts
+library(dplyr)
+library(tidyverse)
+library(data.table)
+library(stringr)
+library(knitr)
+library(kableExtra)
+library("exactRankTests")
+library(blob)
+library(NetCoMi)
+library(ggcorrplot)
+
+# --- Statistics --------------------------------------------------------------
+library(vegan)
+library(pairwiseAdonis)
+library(MASS)
+library(MuMIn)
+library(car)
+library(coin)
+library(nlme)
+library(lme4)
+library(glmmTMB)
+library(multcomp)
+library(rstatix)
+library(optimx)
+library(cluster)
+library(compositions)
+library(BiodiversityR)
+library(rstatix)
+
+# --- Modelling helpers -------------------------------------------------------
+library(mgcv)
+library(forcats)
+
+# --- Plotting ----------------------------------------------------------------
+library(ggplot2)
+library(cowplot)
+library(ggpubr)
+library(ggrepel)
+library(ggnetwork)
+library(ggsignif)
+library(ggeffects)
+library(grid)
+library(gtable)
+library(lemon)
+library(wesanderson)
+library(grid)
+library(scales)
+library(igraph)
+library(ggnetwork)
+library(limma)
+
+
+# =============================================================================
+# COLOUR PALETTES
+# All palettes are defined here, so every script uses the same colours.
+# =============================================================================
+
+# --- Two-level infection palette (Uninfected / Infected) --------------------
+# Used for FSSC2 fill in box plots and prediction plots
+cojo <- c("#703ebe", "#ffa328")
+
+co_jo <- c("#703ebe", "#ffa328")
+
+# --- Three-level hatching stage palette --------------------------------------
+stage_col  <- c("#ff7f83", "#c17cc3", "#01a0b8")   # light/dark failed + hatched
+stage_col2 <- c("#405461", "#aaaa37", "#b90f73")
+
+Stage_col3 <- c("UnhatchedEggED" = "#a47e91",
+                "UnhatchedEggLD" = "#0189fb",
+                "HatchedEgg"     = "#009f22")
+
+# --- Extended taxon-level palettes (bacteriome / mycobiome volcano plots) ----
+phylum_colors <- c(
+  "#CBD588", "#5F7FC7", "purple",   "#DA5724", "#508578",
+  "#CD9BCD", "#AD6F3B", "#673770",  "#D14285", "#652926",
+  "#4daf4a", "red",     "#1919ff",  "darkorchid3", "grey",
+  "turquoise2", "magenta", "#47cbac", "#d8905e", "#6399e5",
+  "#787722", "#8e461c", "#dc87cd",  "#952741", "#822b70",
+  "#3e8136", "blue",    "#e0657a",  "#ffea82", "#bbaf48",
+  "#5b69c5", "#522f87", "#66c873",  "#d39739", "yellow",
+  "#cc4c92", "#94bc4e", "#ac6acd",  "#c1413a", "#d87039"
+)
+
+# Full anacolalot palette — for ANCOM volcano plots (many phyla)
+ana_col_alot <- c("#250034","#51b222","#2234b2","#55d876","#8a3ec3","#00b357","#b934b7","#368500","#cf7aff","#00670a","#006cee","#f68117","#00a3fd","#c5590c","#0181d0","#fdb046","#005caa","#8d8e00","#65006b","#c2c55c","#3d0050","#d9be51","#003572","#b57600","#93a4ff","#5a7800","#e275d8","#727e00","#984b91","#76d1a5","#0e001e","#02d2cb","#834d00","#8abcff","#4f3500","#58ceee","#322000","#cdb4f7","#002403","#e89362","#01a4d7","#ad6f4b","#003962","#deba85","#00171b","#c3c28d","#1c1500","#96cbab","#71436c","#00693b","#a37c9e","#1c2600","#9dc6d1","#004b3f","#bdc0c0","#004456","#01947b","#806251","#017788","#016c51")
+
+
+# =============================================================================
+# HELPER: figure output directory
+# =============================================================================
+dir.create("figures",  showWarnings = FALSE)
+dir.create("outputs",  showWarnings = FALSE)
+dir.create("outputs/tables", showWarnings = FALSE)
