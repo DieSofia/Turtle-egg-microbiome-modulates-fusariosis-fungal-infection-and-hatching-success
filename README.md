@@ -22,6 +22,7 @@ to reproduce the analyses in Carranco et al. (2026).
 1. **QIIME2 scripts** — amplicon processing (16S, ITS, TEF-1α)
 2. **R analyses** — diversity, differential abundance, 
     functional inference, and network analysis
+3. **RDA objects** - 16S and ITS objects after pre-processing
 
 ---
 
@@ -31,6 +32,5 @@ to reproduce the analyses in Carranco et al. (2026).
   NCBI SRA, BioProject [PRJNA######](https://www.ncbi.nlm.nih.gov/bioproject/)
 - Processed feature tables and metadata: `data/`
 - All paths in R scripts are **relative** to the repo root
-- RDA objects for the 16S and ITS after pre-processing
 
 ---
